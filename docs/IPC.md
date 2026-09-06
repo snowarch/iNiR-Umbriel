@@ -800,14 +800,33 @@ Notification management.
 
 ### minimize
 
-Window minimization (Niri workaround - moves windows to hidden workspace).
+Compatibility minimization facade. On Niri it uses iNiR's hidden-workspace model.
+On Umbriel it delegates supported operations to the compositor's native per-output
+scratchpad backend instead of emulating Niri workspaces.
 
 | Function | Description |
 |----------|-------------|
-| `minimize` | Minimize focused window |
-| `minimizeId` | Minimize a window by Niri window ID |
-| `restore` | Restore a minimized window by ID |
-| `restoreOriginal` | Restore a minimized window to the workspace it came from |
+| `minimize` | Minimize the focused window using the active compositor backend |
+| `minimizeId` | Minimize a specific window when the active backend supports exact targeting |
+| `restore` | Restore a minimized/scratchpad window by compositor window ID |
+| `restoreOriginal` | Restore to the original workspace when the compositor preserves that state |
+
+---
+
+### scratchpad
+
+Umbriel-only native scratchpad control. Scratchpads are compositor-owned holding areas
+per output; iNiR does not create hidden workspaces for them. Exact restore uses Umbriel's
+foreign-toplevel ID together with the native show/focus/restore actions.
+
+| Function | Description |
+|----------|-------------|
+| `status` | Return scratchpad membership as JSON with ID, app, title and output |
+| `toggle` | Show or hide the current output's scratchpad |
+| `moveFocused` | Move the focused workspace window into its output scratchpad |
+| `restore <windowId>` | Restore one exact scratchpad window by Umbriel foreign-toplevel ID |
+| `restoreLatest` | Restore the most recently stashed window known to iNiR |
+| `focusNext` | Focus the next visible scratchpad window |
 
 ---
 
@@ -828,7 +847,7 @@ Tiling layout overlay. Pick or cycle through tiling presets for the current work
 
 ### keyboard
 
-Keyboard layout switching (Niri only). Cycles through configured keyboard layouts and queries layout info.
+Keyboard layout switching through the active compositor. Niri supports next/previous; Umbriel currently exposes next plus layout state/events.
 
 | Function | Description |
 |----------|-------------|
@@ -836,10 +855,6 @@ Keyboard layout switching (Niri only). Cycles through configured keyboard layout
 | `switchLayoutPrevious` | Switch to previous keyboard layout |
 | `getCurrentLayout` | Get the current layout name |
 | `getLayouts` | Get all configured layout names (JSON array) |
-
-```kdl
-bind "Mod+Alt+K" { spawn "inir" "keyboard" "switchLayout"; }
-```
 
 ---
 
@@ -853,6 +868,30 @@ Screen zoom. Accessibility feature, or for reading tiny UI without pretending yo
 | `zoomOut` | Decrease compositor zoom |
 
 ---
+
+### autostart
+
+Compositor-native login autostart manager. On Niri it manages the marked section of
+`~/.config/niri/config.d/50-startup.kdl`. On Umbriel it manages a marked block inside
+`general.autostart` in `~/.config/umbriel/config.d/50-startup.toml`. Entries outside
+iNiR's markers remain read-only and are preserved verbatim. Umbriel runs its autostart
+array only on compositor startup, so saving or `config-reload` never launches commands.
+
+| Function | Description |
+|----------|-------------|
+| `status` | Return `<compositor>\|<path>\|<managedCount>\|<externalCount>\|<state>` |
+| `addApp <desktopId>` | Append a managed `gtk-launch <desktopId>` entry |
+| `addCommand <cmd>` | Append a managed startup command using the active compositor format |
+| `removeLast` | Remove the last managed entry |
+| `reload` | Force re-read the startup file |
+
+The Settings UI (ii: AutostartConfig, waffle: WAutostartPage) is the primary
+interface; these IPC calls exist for scripts/keybinds. Apps the user already
+launches via hand-written lines outside the markers are detected and shown as
+"External" (read-only) in the list.
+
+---
+
 
 ## Waffle-Specific Targets
 
@@ -1008,29 +1047,6 @@ Screen recording floating pill OSD. Shows elapsed time and stop button during ac
 
 ---
 
-### autostart
-
-Niri login autostart manager. Reads and writes the managed section of
-`~/.config/niri/config.d/50-startup.kdl` (delimited by `// >>> inir-managed-autostart >>>` /
-`// <<< inir-managed-autostart <<<`). Base iNiR lines and any hand-written
-`spawn-at-startup` lines outside the markers are preserved verbatim; toggling an
-entry comments the line out instead of deleting it. Safe no-op on non-Niri
-compositors (the page shows a guard instead).
-
-| Function | Description |
-|----------|-------------|
-| `status` | Return `niri\|<path>\|<managedCount>\|<externalCount>\|<state>` |
-| `addApp <desktopId>` | Append a managed `gtk-launch <desktopId>` entry |
-| `addCommand <cmd>` | Append a managed `spawn-sh-at-startup` shell line |
-| `removeLast` | Remove the last managed entry |
-| `reload` | Force re-read the startup file |
-
-The Settings UI (ii: AutostartConfig, waffle: WAutostartPage) is the primary
-interface; these IPC calls exist for scripts/keybinds. Apps the user already
-launches via hand-written lines outside the markers are detected and shown as
-"External" (read-only) in the list.
-
----
 
 ## Standalone Commands
 

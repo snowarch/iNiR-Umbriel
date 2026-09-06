@@ -16,10 +16,10 @@ ContentPage {
     property string activeSection: "apps"
 
     SettingsTaskNavigator {
-        visible: Autostart.isNiri
+        visible: Autostart.isSupported
         icon: "rocket_launch"
         title: Translation.tr("Autostart")
-        description: Translation.tr("Manage applications and custom startup commands separately; the guide explains exactly what iNiR writes to niri.")
+        description: Translation.tr("Manage applications and startup commands using the active compositor's native autostart mechanism.")
         summary: Translation.tr("Applications · commands · guide")
         currentValue: root.activeSection
         onSelected: value => root.activeSection = value
@@ -32,15 +32,24 @@ ContentPage {
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
-    function getCommandEntries(): var {
-        const cmds = []
+    property var commandEntries: []
+
+    function refreshCommandEntries(): void {
+        const commands = []
         const entries = Autostart.entries ?? []
         for (let i = 0; i < entries.length; ++i) {
             if (entries[i].type === "command")
-                cmds.push({ entry: entries[i], originalIndex: i })
+                commands.push({ entry: entries[i], originalIndex: i })
         }
-        return cmds
+        root.commandEntries = commands
     }
+
+    Connections {
+        target: Autostart
+        function onEntriesChanged() { Qt.callLater(root.refreshCommandEntries) }
+    }
+
+    Component.onCompleted: root.refreshCommandEntries()
 
     // Sorted + filtered app list: on first, then alphabetical, filtered by search.
     // "On" means either a managed entry or an external spawn line matches.
@@ -71,13 +80,13 @@ ContentPage {
     SettingsCardSection {
         expanded: true
         icon: "block"
-        title: Translation.tr("Autostart needs niri")
-        visible: !Autostart.isNiri
+        title: Translation.tr("Autostart unavailable")
+        visible: !Autostart.isSupported
 
         StyledText {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            text: Translation.tr("App autostart is managed through niri's startup config, which only applies when niri is the active compositor.")
+            text: Translation.tr("This compositor does not expose an autostart configuration backend that iNiR can manage safely.")
             font.pixelSize: Appearance.font.pixelSize.small
             color: Appearance.colors.colOnSurface
         }
@@ -87,14 +96,14 @@ ContentPage {
         expanded: true
         icon: "folder_off"
         title: Translation.tr("Startup file not found")
-        visible: Autostart.isNiri && Autostart.status === "missing"
+        visible: Autostart.isSupported && Autostart.status === "missing"
 
         StyledText {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             text: Autostart.startupFilePath.length > 0
                 ? Translation.tr("iNiR couldn't find %1. Re-run the installer to restore it.").arg(Autostart.startupFilePath)
-                : Translation.tr("iNiR couldn't locate your niri startup config.")
+                : Translation.tr("iNiR couldn't locate the active compositor's startup config.")
             font.pixelSize: Appearance.font.pixelSize.small
             color: Appearance.colors.colOnSurface
         }
@@ -107,7 +116,7 @@ ContentPage {
         icon: "info"
         title: Translation.tr("How autostart works")
         settingsTaskSection: "guide"
-        visible: Autostart.isNiri && root.activeSection === "guide"
+        visible: Autostart.isSupported && root.activeSection === "guide"
 
         ColumnLayout {
             Layout.fillWidth: true
@@ -116,7 +125,9 @@ ContentPage {
             StyledText {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                text: Translation.tr("Apps and commands here are written to niri's startup file and launched by niri at login — iNiR doesn't start them itself, so they keep running even if the shell restarts.")
+                text: Autostart.isUmbriel
+                    ? Translation.tr("Apps and commands here are written to Umbriel general.autostart. Umbriel runs them once on the next login; saving or reloading the compositor does not launch them immediately.")
+                    : Translation.tr("Apps and commands here are written to Niri's startup file and launched by Niri at login. iNiR does not start them itself, so they keep running even if the shell restarts.")
                 font.pixelSize: Appearance.font.pixelSize.small
                 color: Appearance.colors.colOnSurface
             }
@@ -177,7 +188,7 @@ ContentPage {
         icon: "apps"
         title: Translation.tr("Applications")
         settingsTaskSection: "apps"
-        visible: Autostart.isNiri && root.activeSection === "apps"
+        visible: Autostart.isSupported && root.activeSection === "apps"
 
         ColumnLayout {
             Layout.fillWidth: true
@@ -186,7 +197,9 @@ ContentPage {
             StyledText {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                text: Translation.tr("Toggle an app to launch it at login via niri's spawn-at-startup. Apps already in your startup file outside iNiR's control are shown as \"External\" — edit the file below to change those.")
+                text: Autostart.isUmbriel
+                    ? Translation.tr("Toggle an app to add it to Umbriel general.autostart. Existing entries outside iNiR's managed block are shown as \"External\" and are never rewritten.")
+                    : Translation.tr("Toggle an app to launch it at login via Niri's spawn-at-startup. Apps already in your startup file outside iNiR's control are shown as \"External\" and are never rewritten.")
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 color: Appearance.colors.colSubtext
             }
@@ -351,7 +364,7 @@ ContentPage {
         icon: "terminal"
         title: Translation.tr("Custom Commands")
         settingsTaskSection: "commands"
-        visible: Autostart.isNiri && root.activeSection === "commands"
+        visible: Autostart.isSupported && root.activeSection === "commands"
 
         ColumnLayout {
             Layout.fillWidth: true
@@ -360,7 +373,9 @@ ContentPage {
             StyledText {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                text: Translation.tr("Shell commands run through niri's spawn-sh-at-startup, so pipes, env vars, and && work.")
+                text: Autostart.isUmbriel
+                    ? Translation.tr("Commands are stored verbatim in Umbriel general.autostart and run through its startup command runner on the next login.")
+                    : Translation.tr("Shell commands run through Niri's spawn-sh-at-startup, so pipes, env vars, and && work.")
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 color: Appearance.colors.colSubtext
             }
@@ -396,7 +411,7 @@ ContentPage {
                 Layout.fillWidth: true
                 implicitHeight: Math.min(240, commandListView.contentHeight)
                 clip: true
-                model: root.getCommandEntries()
+                model: root.commandEntries
                 boundsBehavior: Flickable.StopAtBounds
 
                 PagePlaceholder {

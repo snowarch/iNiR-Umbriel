@@ -47,12 +47,20 @@ Singleton {
     // ── Paths / environment ──────────────────────────────────────────────
 
     readonly property bool isNiri: CompositorService.isNiri
+    readonly property bool isUmbriel: CompositorService.isUmbriel
+    readonly property bool isSupported: isNiri || isUmbriel
+    readonly property string compositorName: isUmbriel ? "Umbriel" : isNiri ? "Niri" : ""
+    readonly property string helperPath: Quickshell.shellPath("scripts/umbriel-config.py")
 
     readonly property string startupFilePath: {
         try {
             const home = Directories.homePath ?? ""
             if (home.length === 0) return ""
-            return `${home}/.config/niri/config.d/50-startup.kdl`
+            if (isUmbriel)
+                return `${home}/.config/umbriel/config.d/50-startup.toml`
+            if (isNiri)
+                return `${home}/.config/niri/config.d/50-startup.kdl`
+            return ""
         } catch (e) {
             return ""
         }
@@ -73,8 +81,9 @@ Singleton {
     // user sees what niri is already launching.
     property var externalLines: []
     property bool ready: false
-    // "" | "missing" (file absent) | "notniri" (compositor isn't niri) | "read" | "write"
-    property string status: isNiri ? "read" : "notniri"
+    property string status: isSupported ? "read" : "unsupported"
+    property string errorMessage: ""
+    property var _pendingUmbrielEntries: null
 
     // Frozen head/tail captured at parse time so writes never disturb lines
     // outside the managed section.
@@ -88,18 +97,28 @@ Singleton {
 
     Connections {
         target: CompositorService
-        function onIsNiriChanged() {
-            root.status = root.isNiri ? "read" : "notniri"
-            if (root.isNiri) root.reload()
-        }
+        function onIsNiriChanged() { root.syncCompositor() }
+        function onIsUmbrielChanged() { root.syncCompositor() }
+    }
+
+    function syncCompositor(): void {
+        root.status = root.isSupported ? "read" : "unsupported"
+        root.errorMessage = ""
+        if (root.isSupported)
+            root.reload()
     }
 
     function reload(): void {
-        if (!isNiri || startupFilePath.length === 0) {
-            root.status = isNiri ? "missing" : "notniri"
+        if (!isSupported || startupFilePath.length === 0) {
+            root.status = isSupported ? "missing" : "unsupported"
             return
         }
         startupFileView.path = Qt.resolvedUrl(startupFilePath)
+        if (isUmbriel) {
+            if (!umbrielReadProcess.running)
+                umbrielReadProcess.running = true
+            return
+        }
         startupFileView.reload()
     }
 
@@ -261,17 +280,31 @@ Singleton {
     }
 
     function _write(): void {
-        if (!isNiri || startupFilePath.length === 0) {
-            root.status = isNiri ? "missing" : "notniri"
+        if (!isSupported || startupFilePath.length === 0) {
+            root.status = isSupported ? "missing" : "unsupported"
+            return
+        }
+        if (isUmbriel) {
+            root._pendingUmbrielEntries = JSON.parse(JSON.stringify(root.entries ?? []))
+            root.runUmbrielWrite()
             return
         }
         const text = _serialize()
-        // Ensure the directory exists (defensive — the file ships with iNiR).
         Quickshell.execDetached(["/usr/bin/mkdir", "-p",
             (Directories.homePath ?? "") + "/.config/niri/config.d"])
         startupFileView.path = Qt.resolvedUrl(startupFilePath)
         startupFileView.setText(text)
         _log("[Autostart] Wrote", root.entries.length, "entries to", startupFilePath)
+    }
+
+    function runUmbrielWrite(): void {
+        if (!isUmbriel || umbrielWriteProcess.running || root._pendingUmbrielEntries === null)
+            return
+        const pending = root._pendingUmbrielEntries
+        root._pendingUmbrielEntries = null
+        root.status = "write"
+        umbrielWriteProcess.command = ["python3", root.helperPath, "set-autostart", JSON.stringify(pending)]
+        umbrielWriteProcess.running = true
     }
 
     // ── Public mutations ─────────────────────────────────────────────────
@@ -380,7 +413,8 @@ Singleton {
     IpcHandler {
         target: "autostart"
         function status(): string {
-            return `${root.isNiri ? "niri" : "other"}|${root.startupFilePath}|${root.entries.length}|${root.externalLines.length}|${root.status}`
+            const compositor = root.isUmbriel ? "umbriel" : root.isNiri ? "niri" : "other"
+            return `${compositor}|${root.startupFilePath}|${root.entries.length}|${root.externalLines.length}|${root.status}`
         }
         function addCommand(cmd: string): string {
             root.addCommand(cmd)
@@ -400,6 +434,51 @@ Singleton {
         }
     }
 
+    // ── Umbriel TOML backend ────────────────────────────────────────────
+
+    Process {
+        id: umbrielReadProcess
+        command: ["python3", root.helperPath, "get-autostart"]
+        stdout: StdioCollector { id: umbrielReadCollector }
+        stderr: StdioCollector { id: umbrielReadError }
+        onExited: exitCode => {
+            let data = null
+            try { data = JSON.parse(umbrielReadCollector.text || "{}") } catch (e) {}
+            if (exitCode !== 0 || data?.success !== true) {
+                root.ready = true
+                root.status = root.startupFilePath.length > 0 ? "error" : "missing"
+                root.errorMessage = data?.error ?? (umbrielReadError.text || umbrielReadCollector.text || "Unable to read Umbriel autostart config").trim()
+                return
+            }
+            root.entries = data.entries ?? []
+            root.externalLines = data.externalLines ?? []
+            root.ready = true
+            root.status = "read"
+            root.errorMessage = ""
+        }
+    }
+
+    Process {
+        id: umbrielWriteProcess
+        stdout: StdioCollector { id: umbrielWriteCollector }
+        stderr: StdioCollector { id: umbrielWriteError }
+        onExited: exitCode => {
+            let data = null
+            try { data = JSON.parse(umbrielWriteCollector.text || "{}") } catch (e) {}
+            if (exitCode !== 0 || data?.success !== true) {
+                root.status = "error"
+                root.errorMessage = data?.error ?? (umbrielWriteError.text || umbrielWriteCollector.text || "Unable to write Umbriel autostart config").trim()
+            } else {
+                root.entries = data.entries ?? root.entries
+                root.externalLines = data.externalLines ?? root.externalLines
+                root.status = "read"
+                root.errorMessage = ""
+            }
+            if (root._pendingUmbrielEntries !== null)
+                Qt.callLater(root.runUmbrielWrite)
+        }
+    }
+
     // ── File I/O ─────────────────────────────────────────────────────────
 
     FileView {
@@ -407,16 +486,21 @@ Singleton {
         watchChanges: true
         printErrors: false
         onFileChanged: {
-            // External edit (user touched the file by hand) — re-read.
             _log("[Autostart] file changed externally, reloading")
-            startupFileView.reload()
-        }
-        onLoadedChanged: {
-            if (startupFileView.loaded) {
-                root._applyParsed(startupFileView.text())
+            if (root.isUmbriel) {
+                if (!umbrielReadProcess.running)
+                    umbrielReadProcess.running = true
+            } else {
+                startupFileView.reload()
             }
         }
+        onLoadedChanged: {
+            if (startupFileView.loaded && root.isNiri)
+                root._applyParsed(startupFileView.text())
+        }
         onLoadFailed: {
+            if (root.isUmbriel)
+                return
             root.ready = true
             root.status = "missing"
             root.entries = []

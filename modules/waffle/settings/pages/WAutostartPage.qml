@@ -20,15 +20,24 @@ WSettingsPage {
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
-    function getCommandEntries(): var {
-        const cmds = []
+    property var commandEntries: []
+
+    function refreshCommandEntries(): void {
+        const commands = []
         const entries = Autostart.entries ?? []
         for (let i = 0; i < entries.length; ++i) {
             if (entries[i].type === "command")
-                cmds.push({ entry: entries[i], originalIndex: i })
+                commands.push({ entry: entries[i], originalIndex: i })
         }
-        return cmds
+        root.commandEntries = commands
     }
+
+    Connections {
+        target: Autostart
+        function onEntriesChanged() { Qt.callLater(root.refreshCommandEntries) }
+    }
+
+    Component.onCompleted: root.refreshCommandEntries()
 
     function getFilteredApps(): var {
         const search = appSearchField.text.toLowerCase().trim()
@@ -55,14 +64,14 @@ WSettingsPage {
     // ── Non-niri / missing-file guard ────────────────────────────────────
 
     WSettingsCard {
-        title: Translation.tr("Autostart needs niri")
+        title: Translation.tr("Autostart unavailable")
         icon: "alert"
-        visible: !Autostart.isNiri
+        visible: !Autostart.isSupported
 
         WText {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            text: Translation.tr("App autostart is managed through niri's startup config, which only applies when niri is the active compositor.")
+            text: Translation.tr("This compositor does not expose an autostart configuration backend that iNiR can manage safely.")
             font.pixelSize: Looks.font.pixelSize.small
             color: Looks.colors.subfg
         }
@@ -71,14 +80,14 @@ WSettingsPage {
     WSettingsCard {
         title: Translation.tr("Startup file not found")
         icon: "dismiss"
-        visible: Autostart.isNiri && Autostart.status === "missing"
+        visible: Autostart.isSupported && Autostart.status === "missing"
 
         WText {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             text: Autostart.startupFilePath.length > 0
                 ? Translation.tr("iNiR couldn't find %1. Re-run the installer to restore it.").arg(Autostart.startupFilePath)
-                : Translation.tr("iNiR couldn't locate your niri startup config.")
+                : Translation.tr("iNiR couldn't locate the active compositor's startup config.")
             font.pixelSize: Looks.font.pixelSize.small
             color: Looks.colors.subfg
         }
@@ -89,7 +98,7 @@ WSettingsPage {
     WSettingsCard {
         title: Translation.tr("How autostart works")
         icon: "info"
-        visible: Autostart.isNiri
+        visible: Autostart.isSupported
 
         ColumnLayout {
             Layout.fillWidth: true
@@ -98,7 +107,9 @@ WSettingsPage {
             WText {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                text: Translation.tr("Apps and commands here are written to niri's startup file and launched by niri at login — iNiR doesn't start them itself, so they keep running even if the shell restarts.")
+                text: Autostart.isUmbriel
+                    ? Translation.tr("Apps and commands here are written to Umbriel general.autostart. Umbriel runs them once on the next login; saving or reloading the compositor does not launch them immediately.")
+                    : Translation.tr("Apps and commands here are written to Niri's startup file and launched by Niri at login. iNiR does not start them itself, so they keep running even if the shell restarts.")
                 font.pixelSize: Looks.font.pixelSize.small
                 color: Looks.colors.fg
             }
@@ -135,7 +146,7 @@ WSettingsPage {
     WSettingsCard {
         title: Translation.tr("Applications")
         icon: "apps"
-        visible: Autostart.isNiri
+        visible: Autostart.isSupported
 
         ColumnLayout {
             Layout.fillWidth: true
@@ -279,7 +290,7 @@ WSettingsPage {
     WSettingsCard {
         title: Translation.tr("Custom Commands")
         icon: "terminal"
-        visible: Autostart.isNiri
+        visible: Autostart.isSupported
 
         ColumnLayout {
             Layout.fillWidth: true
@@ -288,7 +299,9 @@ WSettingsPage {
             WText {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                text: Translation.tr("Shell commands run through niri's spawn-sh-at-startup, so pipes, env vars, and && work.")
+                text: Autostart.isUmbriel
+                    ? Translation.tr("Commands are stored verbatim in Umbriel general.autostart and run through its startup command runner on the next login.")
+                    : Translation.tr("Shell commands run through Niri's spawn-sh-at-startup, so pipes, env vars, and && work.")
                 font.pixelSize: Looks.font.pixelSize.small
                 color: Looks.colors.subfg
             }
@@ -319,7 +332,7 @@ WSettingsPage {
                 Layout.fillWidth: true
                 implicitHeight: Math.min(200, commandListView.contentHeight)
                 clip: true
-                model: root.getCommandEntries()
+                model: root.commandEntries
 
                 WText {
                     anchors.fill: parent

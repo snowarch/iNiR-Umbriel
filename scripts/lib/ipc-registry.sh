@@ -2,15 +2,15 @@
 # Auto-generated from QML IpcHandler declarations + docs/IPC.md metadata.
 # Do not edit manually.
 # Regenerate: python3 scripts/lib/generate-ipc-registry.py
-# IPC.md hash: b4a4806b9812ec75
-# Targets: 62
+# IPC.md hash: ac05308b9ea9fc6a
+# Targets: 63
 
 declare -gA IPC_TARGET_DESC=(
   [ai]="Shared multi-provider AI service. It supports Gemini, OpenAI-compatible chat and Responses APIs, Mistral and Anthropic; live provider catalogs are normalized into capability-aware model records. Catalog visibility is separate from execution readiness, so public model lists remain browseable without pretending an API key exists. OpenCode Zen and Go resolve their current model lists and per-model API routes dynamically. Normal shell tools use typed actions and approval cards, while arbitrary commands are isolated in Advanced mode."
   [altSwitcher]="Alt+Tab window switcher. Works across workspaces, unlike some other implementations we won't name."
   [appCatalog]="App catalog service. Browse, search, and install curated applications."
   [audio]="Volume and mute control."
-  [autostart]="Niri login autostart manager. Reads and writes the managed section of \`~/.config/niri/config.d/50-startup.kdl\` (delimited by \`// >>> inir-managed-autostart >>>\` / \`// <<< inir-managed-autostart <<<\`). Base iNiR lines and any hand-written \`spawn-at-startup\` lines outside the markers are preserved verbatim; toggling an entry comments the line out instead of deleting it. Safe no-op on non-Niri compositors (the page shows a guard instead)."
+  [autostart]="Compositor-native login autostart manager. On Niri it manages the marked section of \`~/.config/niri/config.d/50-startup.kdl\`. On Umbriel it manages a marked block inside \`general.autostart\` in \`~/.config/umbriel/config.d/50-startup.toml\`. Entries outside iNiR's markers remain read-only and are preserved verbatim. Umbriel runs its autostart array only on compositor startup, so saving or \`config-reload\` never launches commands."
   [background]="Desktop background and widget controls."
   [bar]="Top bar visibility."
   [brightness]="Display brightness control."
@@ -26,13 +26,13 @@ declare -gA IPC_TARGET_DESC=(
   [equalizer]="Open the ii-family EasyEffects output equalizer. The integration is optional and disabled until you enable it. Run \`inir settings\`, then go to **Modules → Optional → EasyEffects Equalizer** and enable the switch. While it is disabled the IPC target is intentionally not constructed. On a fresh empty EasyEffects output pipeline, iNiR bootstraps a neutral 10-band \`iNiR Equalizer\` preset. Existing non-empty effect chains are never replaced automatically."
   [gamemode]="Performance mode for gaming. Auto-detects fullscreen apps and disables animations/effects. Can also be toggled manually for those stubborn games that don't go fullscreen properly."
   [globalActions]="Command palette / action registry. Search and execute shell actions from scripts or keybinds."
-  [keyboard]="Keyboard layout switching (Niri only). Cycles through configured keyboard layouts and queries layout info."
+  [keyboard]="Keyboard layout switching through the active compositor. Niri supports next/previous; Umbriel currently exposes next plus layout state/events."
   [lock]="Lock screen. For when you need to pretend you're working."
   [mascot]="Playful mascot companion (needs \`mascot.enable\` and the companion switch in Settings › Mascot). She peeks from screen edges and reacts to events; every reaction and its pose is configurable in the dedicated Mascot settings page. Never appears over fullscreen apps, game mode, the lock screen or the session screen."
   [mascotMood]="Session-long mood state that flavors the mascot's idle lines (needs \`mascot.personality.enabled\`). The mood re-rolls on a jittered interval and starts from the time of day."
   [mediaControls]="Floating media controls panel."
   [memory]="Memory pressure monitoring for JSGCHeap accumulation (Qt V4 memfd leak). Notifies user when memory is high, lets them decide when to restart."
-  [minimize]="Window minimization (Niri workaround - moves windows to hidden workspace)."
+  [minimize]="Compatibility minimization facade. On Niri it uses iNiR's hidden-workspace model. On Umbriel it delegates supported operations to the compositor's native per-output scratchpad backend instead of emulating Niri workspaces."
   [mpris]="Media player control. Automatically detects and uses YtMusic controls when active, otherwise uses the active MPRIS player."
   [notifications]="Notification management."
   [orbit]="Niri-only Material session navigator for the ii family. Orbit presents nearby workspaces and readable window previews, with MRU Trail navigation and temporary Stash parking."
@@ -46,6 +46,7 @@ declare -gA IPC_TARGET_DESC=(
   [pill]="The pill bar's morphing surfaces (only registered while Bar appearance is set to Pill). Valid surface names: \`power\`, \`media\`, \`battery\`, \`calendar\`, \`link\`, \`mixer\`, \`sysmon\`, \`clipboard\`, \`glance\`, \`launcher\`, \`recorder\`."
   [recordingOsd]="Screen recording floating pill OSD. Shows elapsed time and stop button during active recording."
   [region]="Region selection tools. Screenshots, OCR, recording. Draw a box, get stuff done."
+  [scratchpad]="Umbriel-only native scratchpad control. Scratchpads are compositor-owned holding areas per output; iNiR does not create hidden workspaces for them. Exact restore uses Umbriel's foreign-toplevel ID together with the native show/focus/restore actions."
   [search]="Waffle start menu / search."
   [session]="Power menu. Logout, suspend, reboot, shutdown. The \"I'm done for today\" buttons."
   [settings]="Open or toggle the settings window. GUI config so you don't have to edit JSON by hand."
@@ -75,7 +76,7 @@ declare -gA IPC_TARGET_FAMILY=(
   [altSwitcher]="shared"
   [appCatalog]="shared"
   [audio]="shared"
-  [autostart]="waffle"
+  [autostart]="shared"
   [background]="shared"
   [bar]="shared"
   [brightness]="shared"
@@ -111,6 +112,7 @@ declare -gA IPC_TARGET_FAMILY=(
   [pill]="shared"
   [recordingOsd]="waffle"
   [region]="shared"
+  [scratchpad]="shared"
   [search]="waffle"
   [session]="shared"
   [settings]="shared"
@@ -176,6 +178,7 @@ declare -gA IPC_TARGET_FUNCTIONS=(
   [pill]="open close toggle state"
   [recordingOsd]="toggle show hide"
   [region]="screenshot search googleLens ocr record recordWithSound menu dismiss current"
+  [scratchpad]="status toggle moveFocused restore restoreLatest focusNext"
   [search]="toggle close open"
   [session]="toggle close open"
   [settings]="open toggle"
@@ -222,8 +225,8 @@ declare -gA IPC_FUNCTION_DESC=(
   ["audio:mute"]="Toggle speaker mute"
   ["audio:playEvent"]="Play a shell event sound (e.g. \`notification\`, \`batteryLow\`, \`timerDone\`), honoring the user's per-event override"
   ["audio:micMute"]="Toggle microphone mute"
-  ["autostart:status"]="Return \`niri\\"
-  ["autostart:addCommand"]="Append a managed \`spawn-sh-at-startup\` shell line"
+  ["autostart:status"]="Return \`<compositor>\\"
+  ["autostart:addCommand"]="Append a managed startup command using the active compositor format"
   ["autostart:addApp"]="Append a managed \`gtk-launch <desktopId>\` entry"
   ["autostart:removeLast"]="Remove the last managed entry"
   ["autostart:reload"]="Force re-read the startup file"
@@ -322,10 +325,10 @@ declare -gA IPC_FUNCTION_DESC=(
   ["memory:restart"]="Restart the shell to free accumulated memory"
   ["memory:dismiss"]="Dismiss the memory warning notification"
   ["memory:reset"]="Reset notification state (re-enables warnings)"
-  ["minimize:minimize"]="Minimize focused window"
-  ["minimize:minimizeId"]="Minimize a window by Niri window ID"
-  ["minimize:restore"]="Restore a minimized window by ID"
-  ["minimize:restoreOriginal"]="Restore a minimized window to the workspace it came from"
+  ["minimize:minimize"]="Minimize the focused window using the active compositor backend"
+  ["minimize:minimizeId"]="Minimize a specific window when the active backend supports exact targeting"
+  ["minimize:restore"]="Restore a minimized/scratchpad window by compositor window ID"
+  ["minimize:restoreOriginal"]="Restore to the original workspace when the compositor preserves that state"
   ["mpris:pauseAll"]="Pause all players"
   ["mpris:playPause"]="Toggle play/pause (uses YtMusic if active)"
   ["mpris:previous"]="Previous track (uses YtMusic if active)"
@@ -379,6 +382,12 @@ declare -gA IPC_FUNCTION_DESC=(
   ["region:menu"]="Open the unified snip menu, optionally restoring its last toolbar choice"
   ["region:dismiss"]="Close the selector overlay"
   ["region:current"]="Return the selector state (open/action/mode) as JSON"
+  ["scratchpad:status"]="Return scratchpad membership as JSON with ID, app, title and output"
+  ["scratchpad:toggle"]="Show or hide the current output's scratchpad"
+  ["scratchpad:moveFocused"]="Move the focused workspace window into its output scratchpad"
+  ["scratchpad:restore"]="Restore one exact scratchpad window by Umbriel foreign-toplevel ID"
+  ["scratchpad:restoreLatest"]="Restore the most recently stashed window known to iNiR"
+  ["scratchpad:focusNext"]="Focus the next visible scratchpad window"
   ["search:toggle"]="Open/close start menu"
   ["search:close"]="Close start menu"
   ["search:open"]="Open start menu"
@@ -520,6 +529,7 @@ declare -gA IPC_FUNCTION_ARGS=(
   ["panelFamily:set"]="<family>"
   ["pill:open"]="<surface>"
   ["pill:toggle"]="<surface>"
+  ["scratchpad:restore"]="<windowId>"
   ["settingsNav:page"]="<index>"
   ["shellLayout:openOn"]="<outputName>"
   ["shellLayout:select"]="<surfaceId>"
@@ -546,7 +556,6 @@ bind "Alt+Shift+Tab" { spawn "inir" "altSwitcher" "previous"; }'
   [gamemode]='bind "Super+F12" { spawn "inir" "gamemode" "toggle"; }'
   [globalActions]='bind "Super+Slash" { spawn "inir" "globalActions" "open"; }
 bind "Super+M" { spawn "inir" "globalActions" "run" "toggle-mute"; }'
-  [keyboard]='bind "Mod+Alt+K" { spawn "inir" "keyboard" "switchLayout"; }'
   [lock]='bind "Super+Alt+L" allow-when-locked=true { spawn "inir" "lock" "activate"; }'
   [mpris]='bind "Ctrl+Mod+Space" { spawn "inir" "mpris" "playPause"; }
 bind "Mod+Alt+N" { spawn "inir" "mpris" "next"; }
@@ -569,10 +578,10 @@ bind "Ctrl+Alt+A" { spawn "inir" "wallpaperSelector" "openLauncher" "animated"; 
   [ytmusic]='bind "Mod+M+Space" { spawn "inir" "ytmusic" "playPause"; }'
 )
 
-IPC_ALL_TARGETS=(ai altSwitcher appCatalog audio autostart background bar brightness cheatsheet clipboard cliphistService closeConfirm controlPanel coverflowSelector customWidgets dashboard dev equalizer gamemode globalActions keyboard lock mascot mascotMood mediaControls memory minimize mpris notifications orbit osd osdVolume osk overlay overview packageSearch panelFamily pill recordingOsd region search session settings settingsNav shellLayout shellUpdate sidebarLeft sidebarRight taskview tiling voiceSearch wactionCenter waffleAltSwitcher wallpaperLauncher wallpaperSelector wbar widgetpower wnotificationCenter workspaceStrip wwidgets ytmusic zoom)
-IPC_SHARED_TARGETS=(ai altSwitcher appCatalog audio background bar brightness cheatsheet clipboard cliphistService closeConfirm controlPanel coverflowSelector dashboard dev gamemode globalActions keyboard lock mascot mascotMood mediaControls memory minimize mpris notifications orbit osdVolume osk overlay overview packageSearch panelFamily pill region session settings settingsNav shellLayout shellUpdate sidebarLeft sidebarRight taskview tiling voiceSearch wallpaperLauncher wallpaperSelector workspaceStrip ytmusic zoom)
+IPC_ALL_TARGETS=(ai altSwitcher appCatalog audio autostart background bar brightness cheatsheet clipboard cliphistService closeConfirm controlPanel coverflowSelector customWidgets dashboard dev equalizer gamemode globalActions keyboard lock mascot mascotMood mediaControls memory minimize mpris notifications orbit osd osdVolume osk overlay overview packageSearch panelFamily pill recordingOsd region scratchpad search session settings settingsNav shellLayout shellUpdate sidebarLeft sidebarRight taskview tiling voiceSearch wactionCenter waffleAltSwitcher wallpaperLauncher wallpaperSelector wbar widgetpower wnotificationCenter workspaceStrip wwidgets ytmusic zoom)
+IPC_SHARED_TARGETS=(ai altSwitcher appCatalog audio autostart background bar brightness cheatsheet clipboard cliphistService closeConfirm controlPanel coverflowSelector dashboard dev gamemode globalActions keyboard lock mascot mascotMood mediaControls memory minimize mpris notifications orbit osdVolume osk overlay overview packageSearch panelFamily pill region scratchpad session settings settingsNav shellLayout shellUpdate sidebarLeft sidebarRight taskview tiling voiceSearch wallpaperLauncher wallpaperSelector workspaceStrip ytmusic zoom)
 IPC_II_TARGETS=(equalizer)
-IPC_WAFFLE_TARGETS=(autostart customWidgets osd recordingOsd search wactionCenter waffleAltSwitcher wbar widgetpower wnotificationCenter wwidgets)
+IPC_WAFFLE_TARGETS=(customWidgets osd recordingOsd search wactionCenter waffleAltSwitcher wbar widgetpower wnotificationCenter wwidgets)
 
 declare -gA IPC_KEBAB_ALIASES=(
   [alt-switcher]=altSwitcher

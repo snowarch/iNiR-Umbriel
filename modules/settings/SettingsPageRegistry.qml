@@ -118,7 +118,9 @@ Singleton {
             icon: "desktop_windows",
             desc: Translation.tr("Display, input, layout"),
             essential: false,
-            component: "modules/settings/NiriConfig.qml"
+            component: CompositorService.isUmbriel
+                ? "modules/settings/UmbrielConfig.qml"
+                : "modules/settings/NiriConfig.qml"
         },
         {
             key: "about",
