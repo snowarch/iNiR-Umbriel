@@ -1,0 +1,28 @@
+[layout]
+mode = "scrolling"
+gap = 25
+width_presets = [0.33333, 0.5, 0.66667]
+
+[layout.scrolling]
+default_width_fraction = 0.5
+center_underfull_strip = true
+center_focused = false
+expand_single_column = false
+
+[appearance]
+prefer_no_csd = true
+border_width = 0
+outer_border_width = 0
+corner_radius = 16
+
+[appearance.blur]
+enabled = false
+
+[appearance.shadow]
+enabled = true
+softness = 30
+offset_x = 0
+offset_y = 5
+
+[colors]
+shadow = "#00000077"

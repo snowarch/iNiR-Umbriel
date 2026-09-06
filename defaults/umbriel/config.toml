@@ -1,0 +1,16 @@
+# iNiR defaults for Umbriel. Keep compositor configuration modular so Settings
+# can own individual sections without rewriting user overrides.
+[include]
+files = [
+  "config.d/00-session.toml",
+  "config.d/10-input.toml",
+  "config.d/15-outputs.toml",
+  "config.d/20-layout.toml",
+  "config.d/30-window-rules.toml",
+  "config.d/40-environment.toml",
+  "config.d/50-startup.toml",
+  "config.d/60-animations.toml",
+  "config.d/70-binds.toml",
+  "config.d/80-layer-rules.toml",
+  "config.d/90-user-extra.toml",
+]

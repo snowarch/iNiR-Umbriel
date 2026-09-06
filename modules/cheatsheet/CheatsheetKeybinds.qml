@@ -12,7 +12,9 @@ import QtQuick.Controls
 StyledFlickable {
     id: root
 
-    readonly property var keybinds: CompositorService.isNiri ? NiriKeybinds.keybinds : HyprlandKeybinds.keybinds
+    readonly property var keybinds: CompositorService.isUmbriel ? UmbrielKeybinds.keybinds
+        : CompositorService.isNiri ? NiriKeybinds.keybinds
+        : HyprlandKeybinds.keybinds
     readonly property var categories: keybinds?.children ?? []
     property string searchText: ""
     
@@ -49,10 +51,12 @@ StyledFlickable {
         const icons = {
             "System": "settings_power",
             "ii Shell": "dashboard",
+            "iNiR Shell": "dashboard",
             "Window Switcher": "swap_horiz",
             "Region Tools": "screenshot_region",
             "Applications": "apps",
             "Window Management": "select_window",
+            "Windows": "select_window",
             "Focus": "filter_center_focus",
             "Move Windows": "open_with",
             "Workspaces": "workspaces",
@@ -62,6 +66,8 @@ StyledFlickable {
             "Layout": "view_quilt",
             "Resize": "aspect_ratio",
             "Monitors": "monitor",
+            "Outputs": "monitor",
+            "Media & Hardware": "music_note",
             "Other": "more_horiz",
         }
         return icons[name] ?? "keyboard"

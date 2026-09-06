@@ -1,0 +1,21 @@
+[input.keyboard]
+layout = "us"
+repeat_rate = 50
+repeat_delay = 250
+numlock_toggle = false
+track_layout = "global"
+
+[input.touchpad]
+tap = true
+
+[input.mouse]
+accel_profile = "flat"
+
+[input.cursor]
+theme = "capitaine-cursors-light"
+size = 24
+follows_focus = false
+hide_when_typing = true
+
+[input.focus]
+follows_mouse = false

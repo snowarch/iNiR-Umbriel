@@ -1,0 +1,25 @@
+[general]
+xwayland = true
+show_cheatsheet = false
+focus_on_activate = false
+honor_restored_maximize = false
+
+[workspaces]
+back_and_forth = false
+empty_above = false
+
+[overview]
+zoom = 0.75
+shortcuts = true
+
+[hot_corners.top_left]
+enabled = true
+delay_ms = 500
+action = "overview-open"
+
+[hot_corners.top_right]
+enabled = false
+[hot_corners.bottom_left]
+enabled = false
+[hot_corners.bottom_right]
+enabled = false

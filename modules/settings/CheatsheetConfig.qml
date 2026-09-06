@@ -13,10 +13,14 @@ ContentPage {
     settingsPageName: Translation.tr("Shortcuts")
 
     // ── Data sources ────────────────────────────────────────────────────────
-    readonly property var keybinds: CompositorService.isNiri ? NiriKeybinds.keybinds : HyprlandKeybinds.keybinds
+    readonly property var keybindBackend: CompositorService.isUmbriel ? UmbrielKeybinds
+        : CompositorService.isNiri ? NiriKeybinds : null
+    readonly property var keybinds: keybindBackend?.keybinds ?? HyprlandKeybinds.keybinds
     readonly property var categories: keybinds?.children ?? []
-    readonly property bool hasEnrichedData: CompositorService.isNiri && NiriKeybinds.enrichedCategories.length > 0
-    readonly property bool canEdit: CompositorService.isNiri
+    readonly property bool hasEnrichedData: keybindBackend !== null && keybindBackend.enrichedCategories.length > 0
+    readonly property bool canEdit: keybindBackend !== null
+    readonly property string compositorName: CompositorService.isUmbriel ? "Umbriel"
+        : CompositorService.isNiri ? "Niri" : "Hyprland"
 
     property var keySubstitutions: ({
         "Mod": "󰖳", "Super": "󰖳", "Slash": "/", "Return": "↵", "Escape": "Esc",
@@ -31,7 +35,7 @@ ContentPage {
     property bool _statusVisible: false
 
     Connections {
-        target: NiriKeybinds
+        target: root.keybindBackend
         function onBindSaved(keyCombo) {
             root._statusMsg = Translation.tr("Saved: ") + keyCombo
             root._statusType = "saved"
@@ -126,18 +130,18 @@ ContentPage {
     // ── Load status section ──────────────────────────────────────────────────
     SettingsCardSection {
         expanded: true
-        icon: NiriKeybinds.loaded ? "check_circle" : "info"
-        title: NiriKeybinds.loaded
+        icon: (root.keybindBackend?.loaded ?? false) ? "check_circle" : "info"
+        title: (root.keybindBackend?.loaded ?? false)
             ? Translation.tr("Keybinds loaded from config")
             : Translation.tr("Using default keybinds")
-        visible: CompositorService.isNiri
+        visible: root.keybindBackend !== null
 
         SettingsGroup {
             StyledText {
                 Layout.fillWidth: true
-                text: NiriKeybinds.loaded
-                    ? NiriKeybinds.configPath
-                    : Translation.tr("Could not parse niri config, showing defaults")
+                text: (root.keybindBackend?.loaded ?? false)
+                    ? (root.keybindBackend?.configPath ?? "")
+                    : Translation.tr("Could not parse compositor config, showing defaults")
                 color: Appearance.colors.colSubtext
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 wrapMode: Text.WordWrap
@@ -152,7 +156,7 @@ ContentPage {
         spacing: 16
 
         Repeater {
-            model: root.hasEnrichedData ? NiriKeybinds.enrichedCategories : []
+            model: root.hasEnrichedData ? (root.keybindBackend?.enrichedCategories ?? []) : []
 
             delegate: SettingsCardSection {
                 required property var modelData
@@ -178,7 +182,7 @@ ContentPage {
                             required property int index
                             Layout.fillWidth: true
 
-                            readonly property var bindData: NiriKeybinds.allBinds[modelData] ?? {}
+                            readonly property var bindData: (root.keybindBackend?.allBinds ?? [])[modelData] ?? {}
                             readonly property var _parsed: root.parseComboParts(bindData.key_combo ?? "")
 
                             mods: _parsed.mods
@@ -277,7 +281,7 @@ ContentPage {
                     readonly property string conflictDesc: {
                         const v = text.trim()
                         if (!v) return ""
-                        const found = (NiriKeybinds.allBinds ?? []).find(b => b.key_combo === v && !b.commented)
+                        const found = ((root.keybindBackend?.allBinds ?? []) ?? []).find(b => b.key_combo === v && !b.commented)
                         return found ? (found.description ?? found.action ?? v) : ""
                     }
                 }
@@ -340,7 +344,7 @@ ContentPage {
                         const combo = addKeyComboField.text.trim()
                         const action = addActionField.text.trim()
                         if (combo.length > 0 && action.length > 0) {
-                            NiriKeybinds.setBind(combo, action, addOptionsField.text.trim())
+                            root.keybindBackend.setBind(combo, action, addOptionsField.text.trim())
                             addKeyComboField.text = ""
                             addActionField.text = ""
                             addOptionsField.text = ""
@@ -373,6 +377,7 @@ ContentPage {
             "Screenshots": "screenshot_region",
             "Applications": "apps",
             "Window Management": "web_asset",
+            "Windows": "web_asset",
             "Focus": "center_focus_strong",
             "Move Windows": "open_with",
             "Workspaces": "grid_view",
@@ -381,6 +386,8 @@ ContentPage {
             "Layout": "dashboard_customize",
             "Resize": "photo_size_select_large",
             "Monitors": "monitor",
+            "Outputs": "monitor",
+            "Media & Hardware": "volume_up",
             "Region Tools": "screenshot_region",
             "Other": "more_horiz"
         }
@@ -634,7 +641,7 @@ ContentPage {
                                         readonly property string conflictDesc: {
                                             const v = text.trim()
                                             if (!v || v === kbRow.keyCombo) return ""
-                                            const found = (NiriKeybinds.allBinds ?? []).find(
+                                            const found = ((root.keybindBackend?.allBinds ?? []) ?? []).find(
                                                 b => b.key_combo === v && !b.commented
                                             )
                                             return found ? (found.description ?? found.action ?? v) : ""
@@ -701,7 +708,7 @@ ContentPage {
                                             const combo = editKeyField.text.trim()
                                             const act = editActionField.text.trim()
                                             if (combo.length > 0 && act.length > 0) {
-                                                NiriKeybinds.setBind(combo, act, editOptionsField.text.trim())
+                                                root.keybindBackend.setBind(combo, act, editOptionsField.text.trim())
                                                 kbRow.editState = "display"
                                             }
                                         }
@@ -746,7 +753,7 @@ ContentPage {
                                     buttonText: Translation.tr("Remove")
                                     colText: Appearance.colors.colError
                                     releaseAction: () => {
-                                        NiriKeybinds.removeBind(kbRow.keyCombo)
+                                        root.keybindBackend.removeBind(kbRow.keyCombo)
                                         kbRow.editState = "display"
                                     }
                                 }

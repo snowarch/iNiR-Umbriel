@@ -1,0 +1,7 @@
+[general]
+autostart = [
+  "kbuildsycoca6",
+  "wl-paste --no-newline --type text --watch ~/.config/quickshell/inir/scripts/clipboard-store.py",
+  "wl-paste --type image --watch ~/.config/quickshell/inir/scripts/clipboard-image-store.sh",
+  "/usr/lib/mate-polkit/polkit-mate-authentication-agent-1",
+]

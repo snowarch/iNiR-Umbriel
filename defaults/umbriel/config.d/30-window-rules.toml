@@ -1,0 +1,21 @@
+[[window_rule]]
+match.is_focused = false
+opacity = 0.9
+
+[[window_rule]]
+match.app_id = "^(firefox|zen)$"
+match.title = "^Picture-in-Picture$"
+default_floating = true
+
+[[window_rule]]
+match.app_id = "^steam$"
+match.title = "^notificationtoasts_[0-9]+_desktop$"
+default_floating = true
+default_focused = false
+default_position = { x = 10, y = 10, anchor = "bottom_right" }
+
+[[window_rule]]
+match.app_id = "^xembedsniproxy$"
+default_floating = true
+default_focused = false
+opacity = 0.0

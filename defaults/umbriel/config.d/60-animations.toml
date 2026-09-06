@@ -1,0 +1,31 @@
+[animation]
+enabled = true
+duration_ms = 250
+curve = "easeout"
+
+[animation.windows_in]
+enabled = true
+duration_ms = 200
+curve = "0.25,0.46,0.45,0.94"
+style = "popin"
+
+[animation.windows_out]
+enabled = true
+duration_ms = 175
+curve = "0.25,0.46,0.45,0.94"
+style = "fade"
+
+[animation.windows_move]
+enabled = true
+duration_ms = 250
+curve = "spring:1.0,700"
+
+[animation.workspaces]
+enabled = true
+duration_ms = 250
+curve = "spring:0.98,700"
+
+[animation.overview]
+enabled = true
+duration_ms = 250
+curve = "spring:1.0,700"
