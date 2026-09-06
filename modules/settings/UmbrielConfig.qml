@@ -25,6 +25,9 @@ ContentPage {
     property bool outputPreviewPending: false
     property int outputPreviewSeconds: 0
     property string outputPreviewLabel: ""
+    property var windowRules: []
+    property bool windowRulesLoaded: false
+    property var pendingWindowRules: null
 
     readonly property string helperPath: Quickshell.shellPath("scripts/umbriel-config.py")
     readonly property bool canEdit: root.loaded && root.managed
@@ -114,6 +117,66 @@ ContentPage {
         revertOutputPreviewProcess.running = true
     }
 
+    function refreshWindowRules() {
+        if (!windowRulesProcess.running)
+            windowRulesProcess.running = true
+    }
+
+    function saveWindowRules(nextRules) {
+        root.windowRules = nextRules
+        if (saveWindowRulesProcess.running) {
+            root.pendingWindowRules = nextRules
+            return
+        }
+        saveWindowRulesProcess.command = ["python3", root.helperPath, "set-window-rules", JSON.stringify(nextRules)]
+        saveWindowRulesProcess.running = true
+    }
+
+    function updateWindowRule(index, updater) {
+        const next = JSON.parse(JSON.stringify(root.windowRules ?? []))
+        if (index < 0 || index >= next.length) return
+        updater(next[index])
+        root.saveWindowRules(next)
+    }
+
+    function updateRuleMatch(index, key, value) {
+        root.updateWindowRule(index, rule => {
+            rule.match = rule.match ?? ({})
+            if (value === null || value === undefined || String(value).length === 0 || value === "any")
+                delete rule.match[key]
+            else
+                rule.match[key] = value
+        })
+    }
+
+    function updateRuleSetting(index, key, value) {
+        root.updateWindowRule(index, rule => {
+            if (value === "inherit")
+                delete rule[key]
+            else
+                rule[key] = value
+        })
+    }
+
+    function addWindowRule() {
+        const next = JSON.parse(JSON.stringify(root.windowRules ?? []))
+        next.push({ match: { app_id: "^app-id$" } })
+        root.saveWindowRules(next)
+    }
+
+    function removeWindowRule(index) {
+        const next = JSON.parse(JSON.stringify(root.windowRules ?? []))
+        if (index < 0 || index >= next.length) return
+        next.splice(index, 1)
+        root.saveWindowRules(next)
+    }
+
+    function triBool(rule, key) {
+        if (rule?.[key] === true) return "on"
+        if (rule?.[key] === false) return "off"
+        return "inherit"
+    }
+
     function refreshConfig() {
         if (!configProcess.running)
             configProcess.running = true
@@ -156,6 +219,7 @@ ContentPage {
     Component.onCompleted: {
         root.refreshConfig()
         root.refreshOutputs()
+        root.refreshWindowRules()
     }
 
     Process {
@@ -283,6 +347,48 @@ ContentPage {
         }
     }
 
+    Process {
+        id: windowRulesProcess
+        command: ["python3", root.helperPath, "get-window-rules"]
+        stdout: StdioCollector {
+            id: windowRulesCollector
+            onStreamFinished: {
+                const data = root.parseResult(windowRulesCollector.text, Translation.tr("Unable to parse Umbriel window rules."))
+                if (data?.success === true) {
+                    root.windowRules = data.rules ?? []
+                    root.windowRulesLoaded = true
+                }
+            }
+        }
+        stderr: StdioCollector { id: windowRulesErrorCollector }
+        onExited: exitCode => {
+            if (exitCode !== 0)
+                root.errorMessage = (windowRulesErrorCollector.text || windowRulesCollector.text || Translation.tr("Unable to read Umbriel window rules.")).trim()
+        }
+    }
+
+    Process {
+        id: saveWindowRulesProcess
+        stdout: StdioCollector { id: saveWindowRulesCollector }
+        stderr: StdioCollector { id: saveWindowRulesErrorCollector }
+        onExited: exitCode => {
+            const data = root.parseResult(saveWindowRulesCollector.text, Translation.tr("Unable to parse Umbriel window-rule result."))
+            if (exitCode !== 0 || data?.success !== true) {
+                root.errorMessage = data?.error ?? (saveWindowRulesErrorCollector.text || saveWindowRulesCollector.text || Translation.tr("Umbriel rejected the window rules.")).trim()
+                root.refreshWindowRules()
+            } else {
+                root.errorMessage = ""
+                root.infoMessage = Translation.tr("Umbriel window rules updated live.")
+                root.windowRules = data.rules ?? root.windowRules
+            }
+            if (root.pendingWindowRules !== null) {
+                const pending = root.pendingWindowRules
+                root.pendingWindowRules = null
+                root.saveWindowRules(pending)
+            }
+        }
+    }
+
     Timer {
         id: outputPreviewCountdown
         interval: 1000
@@ -303,7 +409,7 @@ ContentPage {
         icon: "desktop_windows"
         title: Translation.tr("Umbriel")
         description: Translation.tr("Edit only settings Umbriel owns natively. Changes are validated and reloaded without restarting the compositor.")
-        summary: Translation.tr("General · Input · Layout · Appearance · Scratchpad · Animations · Displays")
+        summary: Translation.tr("General · Input · Layout · Appearance · Scratchpad · Rules · Animations · Displays")
         currentValue: root.activeSection
         onSelected: value => root.activeSection = value
         options: [
@@ -312,6 +418,7 @@ ContentPage {
             { displayName: Translation.tr("Layout"), icon: "view_column", value: "layout" },
             { displayName: Translation.tr("Appearance"), icon: "style", value: "appearance" },
             { displayName: Translation.tr("Scratchpad"), icon: "inventory_2", value: "scratchpad" },
+            { displayName: Translation.tr("Window rules"), icon: "rule", value: "rules" },
             { displayName: Translation.tr("Animations"), icon: "animation", value: "animations" },
             { displayName: Translation.tr("Displays"), icon: "monitor", value: "displays" }
         ]
@@ -825,6 +932,169 @@ ContentPage {
                 color: Appearance.colors.colSubtext
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 wrapMode: Text.WordWrap
+            }
+        }
+    }
+
+    SettingsCardSection {
+        settingsTaskSection: "rules"
+        visible: root.activeSection === "rules"
+        expanded: true
+        icon: "rule"
+        title: Translation.tr("Window rules")
+
+        SettingsGroup {
+            StyledText {
+                Layout.fillWidth: true
+                text: Translation.tr("These are user overrides stored separately from iNiR's shipped Umbriel rules. Later rules win when multiple rules set the same field.")
+                color: Appearance.colors.colSubtext
+                font.pixelSize: Appearance.font.pixelSize.small
+                wrapMode: Text.WordWrap
+            }
+
+            Repeater {
+                model: root.windowRules
+                delegate: ColumnLayout {
+                    id: ruleDelegate
+                    required property int index
+                    required property var modelData
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    SettingsDivider {}
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: Translation.tr("Rule %1").arg(ruleDelegate.index + 1)
+                            color: Appearance.colors.colOnLayer1
+                            font.weight: Font.Medium
+                        }
+                        RippleButton {
+                            Layout.preferredWidth: 92
+                            Layout.preferredHeight: 34
+                            buttonText: Translation.tr("Remove")
+                            onClicked: root.removeWindowRule(ruleDelegate.index)
+                        }
+                    }
+
+                    ContentSubsection {
+                        title: Translation.tr("Match")
+                        MaterialTextField {
+                            Layout.fillWidth: true
+                            text: String(ruleDelegate.modelData?.match?.app_id ?? "")
+                            placeholderText: Translation.tr("App ID regex")
+                            onEditingFinished: {
+                                const value = text.trim()
+                                if (value.length > 0)
+                                    root.updateRuleMatch(ruleDelegate.index, "app_id", value)
+                            }
+                        }
+                        MaterialTextField {
+                            Layout.fillWidth: true
+                            text: String(ruleDelegate.modelData?.match?.title ?? "")
+                            placeholderText: Translation.tr("Title regex (optional)")
+                            onEditingFinished: root.updateRuleMatch(ruleDelegate.index, "title", text.trim())
+                        }
+                        ConfigSelectionArray {
+                            currentValue: String(ruleDelegate.modelData?.match?.content_type ?? "any")
+                            options: [
+                                { displayName: Translation.tr("Any content"), icon: "apps", value: "any" },
+                                { displayName: Translation.tr("Game"), icon: "sports_esports", value: "game" },
+                                { displayName: Translation.tr("Video"), icon: "movie", value: "video" },
+                                { displayName: Translation.tr("Photo"), icon: "image", value: "photo" },
+                                { displayName: Translation.tr("None"), icon: "remove", value: "none" }
+                            ]
+                            onSelected: value => root.updateRuleMatch(ruleDelegate.index, "content_type", value)
+                        }
+                    }
+
+                    ContentSubsection {
+                        title: Translation.tr("Opening behavior")
+                        ConfigSelectionArray {
+                            currentValue: root.triBool(ruleDelegate.modelData, "default_floating")
+                            options: [
+                                { displayName: Translation.tr("Inherit"), icon: "settings", value: "inherit" },
+                                { displayName: Translation.tr("Floating"), icon: "picture_in_picture", value: "on" },
+                                { displayName: Translation.tr("Tiled"), icon: "view_quilt", value: "off" }
+                            ]
+                            onSelected: value => root.updateRuleSetting(ruleDelegate.index, "default_floating", value === "on" ? true : value === "off" ? false : "inherit")
+                        }
+                        ConfigSelectionArray {
+                            currentValue: root.triBool(ruleDelegate.modelData, "default_fullscreen")
+                            options: [
+                                { displayName: Translation.tr("Inherit fullscreen"), icon: "settings", value: "inherit" },
+                                { displayName: Translation.tr("Open fullscreen"), icon: "fullscreen", value: "on" },
+                                { displayName: Translation.tr("Do not force fullscreen"), icon: "fullscreen_exit", value: "off" }
+                            ]
+                            onSelected: value => root.updateRuleSetting(ruleDelegate.index, "default_fullscreen", value === "on" ? true : value === "off" ? false : "inherit")
+                        }
+                        ConfigSelectionArray {
+                            currentValue: root.triBool(ruleDelegate.modelData, "default_focused")
+                            options: [
+                                { displayName: Translation.tr("Default focus policy"), icon: "settings", value: "inherit" },
+                                { displayName: Translation.tr("Take focus"), icon: "center_focus_strong", value: "on" },
+                                { displayName: Translation.tr("Do not take focus"), icon: "do_not_disturb_on", value: "off" }
+                            ]
+                            onSelected: value => root.updateRuleSetting(ruleDelegate.index, "default_focused", value === "on" ? true : value === "off" ? false : "inherit")
+                        }
+                    }
+
+                    ContentSubsection {
+                        title: Translation.tr("Presentation policy")
+                        ConfigSelectionArray {
+                            currentValue: String(ruleDelegate.modelData?.vrr ?? "inherit")
+                            options: [
+                                { displayName: Translation.tr("Inherit VRR"), icon: "settings", value: "inherit" },
+                                { displayName: Translation.tr("VRR disabled"), icon: "sync_disabled", value: "disabled" },
+                                { displayName: Translation.tr("VRR always"), icon: "sync", value: "always" },
+                                { displayName: Translation.tr("VRR fullscreen"), icon: "fullscreen", value: "fullscreen" }
+                            ]
+                            onSelected: value => root.updateRuleSetting(ruleDelegate.index, "vrr", value)
+                        }
+                        ConfigSelectionArray {
+                            currentValue: String(ruleDelegate.modelData?.hdr ?? "inherit")
+                            options: [
+                                { displayName: Translation.tr("Inherit HDR"), icon: "settings", value: "inherit" },
+                                { displayName: Translation.tr("HDR off"), icon: "hdr_off", value: "off" },
+                                { displayName: Translation.tr("HDR on"), icon: "hdr_on", value: "on" },
+                                { displayName: Translation.tr("HDR automatic"), icon: "auto_awesome", value: "auto" },
+                                { displayName: Translation.tr("HDR fullscreen"), icon: "fullscreen", value: "fullscreen" }
+                            ]
+                            onSelected: value => root.updateRuleSetting(ruleDelegate.index, "hdr", value)
+                        }
+                        ConfigSelectionArray {
+                            currentValue: root.triBool(ruleDelegate.modelData, "tearing")
+                            options: [
+                                { displayName: Translation.tr("Follow client tearing hint"), icon: "settings", value: "inherit" },
+                                { displayName: Translation.tr("Request tearing"), icon: "speed", value: "on" },
+                                { displayName: Translation.tr("Veto tearing"), icon: "block", value: "off" }
+                            ]
+                            onSelected: value => root.updateRuleSetting(ruleDelegate.index, "tearing", value === "on" ? true : value === "off" ? false : "inherit")
+                        }
+                        ConfigSpinBox {
+                            text: Translation.tr("Opacity (%)")
+                            value: Math.round(Number(ruleDelegate.modelData?.opacity ?? 1) * 100)
+                            from: 10
+                            to: 100
+                            stepSize: 5
+                            onValueChanged: {
+                                const current = Number(ruleDelegate.modelData?.opacity ?? 1)
+                                if (root.windowRulesLoaded && Math.abs(value / 100 - current) > 0.001)
+                                    root.updateRuleSetting(ruleDelegate.index, "opacity", value / 100)
+                            }
+                        }
+                    }
+                }
+            }
+
+            RippleButton {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 38
+                buttonText: Translation.tr("Add rule")
+                enabled: root.windowRulesLoaded && !saveWindowRulesProcess.running
+                onClicked: root.addWindowRule()
             }
         }
     }

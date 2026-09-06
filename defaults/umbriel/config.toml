@@ -7,6 +7,7 @@ files = [
   "config.d/15-outputs.toml",
   "config.d/20-layout.toml",
   "config.d/30-window-rules.toml",
+  "config.d/35-user-window-rules.toml",
   "config.d/40-environment.toml",
   "config.d/50-startup.toml",
   "config.d/60-animations.toml",

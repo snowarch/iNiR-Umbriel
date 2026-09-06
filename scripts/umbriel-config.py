@@ -726,6 +726,105 @@ def write_autostart(root: Path, entries: list[dict]) -> dict:
         raise
     return read_autostart(root)
 
+
+USER_RULES_FILE = "config.d/35-user-window-rules.toml"
+RULE_MATCH_KEYS = {"app_id", "title", "xdg_tag", "content_type", "is_focused", "at_startup"}
+RULE_KEYS = {
+    "default_output", "default_workspace", "default_fullscreen", "default_floating", "default_maximize",
+    "default_maximize_to_edges", "default_focused", "default_pinned", "default_width", "default_height",
+    "opacity", "blur", "blur_popups", "blur_ignore_alpha", "blur_optimized", "focus_on_activate",
+    "vrr", "tearing", "hdr",
+}
+
+
+def user_rules_path(root: Path) -> Path:
+    return root.parent / USER_RULES_FILE
+
+
+def read_user_rules(root: Path) -> dict:
+    path = user_rules_path(root)
+    if not path.is_file():
+        return {"success": True, "configPath": str(path), "rules": [], "managed": False}
+    data = load_toml(path)
+    rules = data.get("window_rule", [])
+    if not isinstance(rules, list):
+        raise RuntimeError("managed Umbriel window rules must be an array")
+    return {"success": True, "configPath": str(path), "rules": rules, "managed": True}
+
+
+def _validate_rule(rule: dict) -> None:
+    if not isinstance(rule, dict):
+        raise RuntimeError("window rule must be an object")
+    match = rule.get("match", {})
+    if not isinstance(match, dict):
+        raise RuntimeError("window rule match must be an object")
+    unknown_match = set(match) - RULE_MATCH_KEYS
+    unknown_rule = set(rule) - RULE_KEYS - {"match"}
+    if unknown_match:
+        raise RuntimeError("unsupported Umbriel rule match: " + ", ".join(sorted(unknown_match)))
+    if unknown_rule:
+        raise RuntimeError("unsupported Umbriel rule setting: " + ", ".join(sorted(unknown_rule)))
+    if not match:
+        raise RuntimeError("user window rules require at least one match selector")
+
+
+def render_user_rules(rules: list[dict]) -> str:
+    lines = ["# User window rules managed by iNiR Settings.\n", "# Project defaults stay in 30-window-rules.toml.\n"]
+    for rule in rules:
+        _validate_rule(rule)
+        lines.append("\n[[window_rule]]\n")
+        for key, value in rule.get("match", {}).items():
+            lines.append(f"match.{key} = {render_toml_value(value)}\n")
+        for key, value in rule.items():
+            if key == "match" or value is None:
+                continue
+            lines.append(f"{key} = {render_toml_value(value)}\n")
+    return "".join(lines)
+
+
+def write_user_rules(root: Path, rules: list[dict]) -> dict:
+    if not isinstance(rules, list):
+        raise RuntimeError("window rules must be an array")
+    path = user_rules_path(root)
+    if not path.is_file():
+        raise RuntimeError("managed Umbriel user window-rule file is not installed")
+    before = path.read_text(encoding="utf-8")
+    path.write_text(render_user_rules(rules), encoding="utf-8")
+    try:
+        validate(root)
+        reload_umbriel()
+    except Exception:
+        path.write_text(before, encoding="utf-8")
+        raise
+    return read_user_rules(root)
+
+
+def ensure_user_rules(root: Path) -> dict:
+    if not root.is_file():
+        raise RuntimeError("Umbriel config.toml not found")
+    before_root = root.read_text(encoding="utf-8")
+    path = user_rules_path(root)
+    existed = path.exists()
+    before_rules = path.read_text(encoding="utf-8") if existed else ""
+    include_line = f'  "{USER_RULES_FILE}",\n'
+    if USER_RULES_FILE not in before_root:
+        anchor = '  "config.d/30-window-rules.toml",\n'
+        if anchor not in before_root or '  "config.d/40-environment.toml",\n' not in before_root:
+            raise RuntimeError("Umbriel config is not using iNiR's managed include layout")
+        root.write_text(before_root.replace(anchor, anchor + include_line, 1), encoding="utf-8")
+    if not path.exists():
+        path.write_text(render_user_rules([]), encoding="utf-8")
+    try:
+        validate(root)
+    except Exception:
+        root.write_text(before_root, encoding="utf-8")
+        if existed:
+            path.write_text(before_rules, encoding="utf-8")
+        else:
+            path.unlink(missing_ok=True)
+        raise
+    return {"success": True, "configPath": str(path), "installed": True}
+
 def validate(path: Path) -> None:
     proc = subprocess.run(["umbriel", "validate", "-c", str(path)], capture_output=True, text=True)
     if proc.returncode != 0:
@@ -739,6 +838,10 @@ def main() -> int:
     sub.add_parser("get-config")
     sub.add_parser("outputs")
     sub.add_parser("get-autostart")
+    sub.add_parser("get-window-rules")
+    setrules = sub.add_parser("set-window-rules")
+    setrules.add_argument("rules")
+    sub.add_parser("ensure-user-rules")
     setauto = sub.add_parser("set-autostart")
     setauto.add_argument("entries")
     setcfg = sub.add_parser("set")
@@ -775,6 +878,15 @@ def main() -> int:
             return 0
         if args.command == "get-autostart":
             print(json.dumps(read_autostart(root)))
+            return 0
+        if args.command == "get-window-rules":
+            print(json.dumps(read_user_rules(root)))
+            return 0
+        if args.command == "set-window-rules":
+            print(json.dumps(write_user_rules(root, json.loads(args.rules))))
+            return 0
+        if args.command == "ensure-user-rules":
+            print(json.dumps(ensure_user_rules(root)))
             return 0
         if args.command == "set-autostart":
             entries = json.loads(args.entries)

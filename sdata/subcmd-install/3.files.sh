@@ -260,6 +260,14 @@ if [[ "$INSTALL_COMPOSITOR_TARGET" == "umbriel-session.target" ]]; then
     log_success "Umbriel config installed (defaults)"
   fi
 
+  if [[ -f "$UMBRIEL_CONFIG" ]] && grep -q 'config.d/30-window-rules.toml' "$UMBRIEL_CONFIG" 2>/dev/null && grep -q 'config.d/40-environment.toml' "$UMBRIEL_CONFIG" 2>/dev/null; then
+    if python3 "${REPO_ROOT}/scripts/umbriel-config.py" --config "$UMBRIEL_CONFIG" ensure-user-rules >/dev/null 2>&1; then
+      log_success "Umbriel user window-rule layer ready"
+    else
+      log_warning "Could not prepare Umbriel user window-rule layer"
+    fi
+  fi
+
   UMBRIEL_ENV_CFG="${XDG_CONFIG_HOME}/umbriel/config.d/40-environment.toml"
   UMBRIEL_STARTUP_CFG="${XDG_CONFIG_HOME}/umbriel/config.d/50-startup.toml"
   if [[ -f "$UMBRIEL_CONFIG" ]]; then
