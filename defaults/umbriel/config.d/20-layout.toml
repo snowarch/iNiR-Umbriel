@@ -4,10 +4,19 @@ gap = 25
 width_presets = [0.33333, 0.5, 0.66667]
 
 [layout.scrolling]
+direction = "horizontal"
 default_width_fraction = 0.5
 center_underfull_strip = true
 center_focused = false
 expand_single_column = false
+
+[layout.dwindle]
+preserve_split = false
+
+[layout.master]
+position = "left"
+default_width_fraction = 0.55
+new_on_top = true
 
 [appearance]
 prefer_no_csd = true

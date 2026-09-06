@@ -536,15 +536,27 @@ ContentPage {
                 stepSize: 1
                 onValueChanged: root.queueSet("layout.gap", value)
             }
+            ConfigSelectionArray {
+                visible: root.configValue("layout.mode", "scrolling") === "scrolling"
+                currentValue: root.configValue("layout.scrolling.direction", "horizontal")
+                options: [
+                    { displayName: Translation.tr("Horizontal scrolling"), icon: "swap_horiz", value: "horizontal" },
+                    { displayName: Translation.tr("Vertical scrolling"), icon: "swap_vert", value: "vertical" }
+                ]
+                onSelected: value => root.queueSet("layout.scrolling.direction", value)
+            }
             ConfigSpinBox {
                 visible: root.configValue("layout.mode", "scrolling") === "scrolling"
                 icon: "width"
-                text: Translation.tr("Default column width (%)")
+                text: Translation.tr("Default strip size (%)")
                 value: Math.round(root.configValue("layout.scrolling.default_width_fraction", 0.5) * 100)
-                from: 20
+                from: 10
                 to: 100
                 stepSize: 5
                 onValueChanged: root.queueSet("layout.scrolling.default_width_fraction", value / 100)
+                StyledToolTip {
+                    text: Translation.tr("On horizontal workspaces this is the initial column width. On vertical workspaces it is the initial lane height.")
+                }
             }
             SettingsSwitch {
                 visible: root.configValue("layout.mode", "scrolling") === "scrolling"
@@ -556,16 +568,54 @@ ContentPage {
             SettingsSwitch {
                 visible: root.configValue("layout.mode", "scrolling") === "scrolling"
                 buttonIcon: "center_focus_strong"
-                text: Translation.tr("Always center focused column")
+                text: Translation.tr("Always center focused strip item")
                 checked: root.configValue("layout.scrolling.center_focused", false)
                 onCheckedChanged: root.queueSet("layout.scrolling.center_focused", checked)
             }
             SettingsSwitch {
                 visible: root.configValue("layout.mode", "scrolling") === "scrolling"
                 buttonIcon: "fullscreen"
-                text: Translation.tr("Expand a single column")
+                text: Translation.tr("Expand a single strip item")
                 checked: root.configValue("layout.scrolling.expand_single_column", false)
                 onCheckedChanged: root.queueSet("layout.scrolling.expand_single_column", checked)
+            }
+
+            SettingsSwitch {
+                visible: root.configValue("layout.mode", "scrolling") === "dwindle"
+                buttonIcon: "account_tree"
+                text: Translation.tr("Preserve split directions")
+                checked: root.configValue("layout.dwindle.preserve_split", false)
+                onCheckedChanged: root.queueSet("layout.dwindle.preserve_split", checked)
+                StyledToolTip {
+                    text: Translation.tr("Keep each Dwindle split direction fixed after it is created instead of reflowing it with the tile geometry.")
+                }
+            }
+
+            ConfigSelectionArray {
+                visible: root.configValue("layout.mode", "scrolling") === "master"
+                currentValue: root.configValue("layout.master.position", "left")
+                options: [
+                    { displayName: Translation.tr("Master on left"), icon: "align_horizontal_left", value: "left" },
+                    { displayName: Translation.tr("Master on right"), icon: "align_horizontal_right", value: "right" }
+                ]
+                onSelected: value => root.queueSet("layout.master.position", value)
+            }
+            ConfigSpinBox {
+                visible: root.configValue("layout.mode", "scrolling") === "master"
+                icon: "width"
+                text: Translation.tr("Initial master width (%)")
+                value: Math.round(root.configValue("layout.master.default_width_fraction", 0.55) * 100)
+                from: 10
+                to: 90
+                stepSize: 5
+                onValueChanged: root.queueSet("layout.master.default_width_fraction", value / 100)
+            }
+            SettingsSwitch {
+                visible: root.configValue("layout.mode", "scrolling") === "master"
+                buttonIcon: "vertical_align_top"
+                text: Translation.tr("New stack windows on top")
+                checked: root.configValue("layout.master.new_on_top", true)
+                onCheckedChanged: root.queueSet("layout.master.new_on_top", checked)
             }
         }
     }
