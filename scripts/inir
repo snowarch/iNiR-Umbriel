@@ -11,7 +11,10 @@ max_polls="${INIR_RESTART_MAX_POLLS:-60}"
 max_rapid_restarts="${INIR_MAX_RAPID_RESTARTS:-5}"
 restart_window="${INIR_RESTART_WINDOW:-60}"
 systemd_user_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+launcher_source="${BASH_SOURCE[0]}"
+resolved_launcher_source="$(readlink -f -- "$launcher_source" 2>/dev/null || true)"
+[[ -n "$resolved_launcher_source" ]] && launcher_source="$resolved_launcher_source"
+script_dir="$(cd -- "$(dirname -- "$launcher_source")" && pwd)"
 launcher_root="$(cd -- "$script_dir/.." 2>/dev/null && pwd || printf '%s' "$script_dir")"
 
 source_config_path_helper() {

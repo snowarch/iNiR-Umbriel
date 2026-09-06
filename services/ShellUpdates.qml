@@ -514,7 +514,7 @@ Singleton {
         running: false
         command: [
             "/usr/bin/bash", "-c",
-            "p='" + root.configDir + "'; [[ -d \"$p/.git\" && -f \"$p/setup\" && -f \"$p/shell.qml\" ]] && echo OK || echo ''"
+            "p='" + root.configDir + "'; [[ -f \"$p/setup\" && -f \"$p/shell.qml\" ]] && git -C \"$p\" rev-parse --is-inside-work-tree 2>/dev/null | grep -qx true && echo OK || echo ''"
         ]
         stdout: StdioCollector {
             onStreamFinished: {
@@ -525,7 +525,6 @@ Singleton {
                     root.updateStrategy = "repo-setup"
                     root.repoPathLoaded = true
                     print("[ShellUpdates] Using active config checkout as repo path: " + root.repoPath)
-                    persistRepoPathProc.running = true
                     availabilityProc.running = true
                 } else if (root.pendingRepoPath.length > 0) {
                     root.repoPath = root.pendingRepoPath
@@ -557,7 +556,7 @@ Singleton {
         running: false
         command: [
             "/usr/bin/bash", "-c",
-            "p='" + root.repoPath + "'; [[ -d \"$p/.git\" && -f \"$p/setup\" && -f \"$p/shell.qml\" ]] && echo OK || echo ''"
+            "p='" + root.repoPath + "'; [[ -f \"$p/setup\" && -f \"$p/shell.qml\" ]] && git -C \"$p\" rev-parse --is-inside-work-tree 2>/dev/null | grep -qx true && echo OK || echo ''"
         ]
         stdout: StdioCollector {
             onStreamFinished: {
@@ -585,7 +584,7 @@ Singleton {
         command: [
             "/usr/bin/bash", "-c",
             // First check if config dir itself is a git repo (dev setup)
-            "if [[ -d \"" + root.configDir + "/.git\" ]]; then echo \"" + root.configDir + "\"; exit 0; fi; " +
+            "if [[ -f \"" + root.configDir + "/setup\" && -f \"" + root.configDir + "/shell.qml\" ]] && git -C \"" + root.configDir + "\" rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo \"" + root.configDir + "\"; exit 0; fi; " +
             // Search for a git repo containing setup + shell.qml (our repo signature)
             // Check common locations first, then broader search
             "for dir in ~/illogical-impulse ~/inir ~/iNiR " +
@@ -593,7 +592,7 @@ Singleton {
             "~/Projects/illogical-impulse ~/Projects/inir " +
             "~/Downloads/illogical-impulse ~/Downloads/inir " +
             "~/src/illogical-impulse ~/src/inir; do " +
-            "if [[ -d \"$dir/.git\" && -f \"$dir/setup\" && -f \"$dir/shell.qml\" ]]; then echo \"$dir\"; exit 0; fi; done; " +
+            "if [[ -f \"$dir/setup\" && -f \"$dir/shell.qml\" ]] && git -C \"$dir\" rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo \"$dir\"; exit 0; fi; done; " +
             // Last resort: find in home (max depth 3, timeout 2s)
             "timeout 2 find \"$HOME\" -maxdepth 3 -name setup \\( -path '*/inir/setup' -o -path '*/illogical-impulse/setup' -o -path '*/ii/setup' \\) 2>/dev/null | while read -r f; do [[ -f \"$(dirname \"$f\")/shell.qml\" ]] && dirname \"$f\" && break; done; "
         ]
@@ -872,52 +871,18 @@ Singleton {
         }
         onExited: (exitCode, exitStatus) => {
             if (exitCode !== 0) {
-                // Try origin/main as fallback (in case branch doesn't exist remotely)
-                remoteCommitFallbackProc.running = true
+                root.remoteCommit = ""
+                root._remoteBranch = ""
+                root.commitsAhead = 0
+                root.commitsBehind = 0
+                root.repoRelation = "local-branch"
+                root.hasUpdate = false
+                root.isChecking = false
+                root.initialUpdateCheckDone = true
+                print("[ShellUpdates] No matching origin branch for " + root.currentBranch + "; treating it as a local branch")
                 return
             }
             root._remoteBranch = root.currentBranch
-            countCommitsProc.running = true
-        }
-    }
-
-    // Step 5b: Fallback to origin/main
-    Process {
-        id: remoteCommitFallbackProc
-        running: false
-        command: [...root._gitCmd, "rev-parse", "--short", "origin/main"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                root.remoteCommit = (text ?? "").trim()
-            }
-        }
-        onExited: (exitCode, exitStatus) => {
-            if (exitCode !== 0) {
-                // Try origin/master as last resort
-                remoteCommitFallback2Proc.running = true
-                return
-            }
-            root._remoteBranch = "main"
-            countCommitsProc.running = true
-        }
-    }
-
-    // Step 5c: Fallback to origin/master
-    Process {
-        id: remoteCommitFallback2Proc
-        running: false
-        command: [...root._gitCmd, "rev-parse", "--short", "origin/master"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                root.remoteCommit = (text ?? "").trim()
-            }
-        }
-        onExited: (exitCode, exitStatus) => {
-            if (exitCode !== 0) {
-                root.isChecking = false
-                return
-            }
-            root._remoteBranch = "master"
             countCommitsProc.running = true
         }
     }

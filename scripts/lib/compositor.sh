@@ -76,9 +76,6 @@ inir_write_compositor_lifecycle_dropin() {
     mkdir -p "$dropin_dir"
     cat > "$tmp" <<EOF_DROPIN
 [Unit]
-PartOf=
-Requisite=
-After=
 PartOf=$target
 Requisite=$target
 After=$target
