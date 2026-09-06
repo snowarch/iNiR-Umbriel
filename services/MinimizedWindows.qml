@@ -20,7 +20,8 @@ Singleton {
     // List of minimized window IDs for easy iteration
     property list<int> minimizedIds: []
     property bool recoveredPersistentState: false
-    readonly property bool actionReady: CompositorService.isNiri && Persistent.ready && NiriService.actionReady
+    readonly property bool actionReady: CompositorService.isUmbriel ? UmbrielScratchpad.actionReady
+        : CompositorService.isNiri && Persistent.ready && NiriService.actionReady
 
     function persistState() {
         if (!Persistent.ready) return;
@@ -86,11 +87,15 @@ Singleton {
     
     // Check if a window is minimized
     function isMinimized(windowId) {
-        return minimizedIds.includes(windowId);
+        if (CompositorService.isUmbriel)
+            return UmbrielScratchpad.isScratchpadWindow(windowId)
+        return minimizedIds.includes(Number(windowId));
     }
     
     // Get minimized windows for a specific app
     function getMinimizedForApp(appId) {
+        if (CompositorService.isUmbriel)
+            return UmbrielScratchpad.idsForApp(appId)
         const pattern = appId.toLowerCase();
         return minimizedIds.filter(id => {
             const info = minimizedWindows[id];
@@ -147,7 +152,10 @@ Singleton {
     // Minimize the focused window or a specific window
     function minimize(windowId = null) {
         if (!root.actionReady) return false;
+        if (CompositorService.isUmbriel)
+            return UmbrielScratchpad.moveWindow(windowId === null ? "" : String(windowId))
         recoverPersistentState();
+        windowId = windowId === null ? null : Number(windowId);
         
         // Get window info
         let targetWindow;
@@ -193,6 +201,11 @@ Singleton {
     // Restore a minimized window
     function restore(windowId) {
         if (!root.actionReady) return;
+        if (CompositorService.isUmbriel) {
+            UmbrielScratchpad.restoreWindow(String(windowId))
+            return
+        }
+        windowId = Number(windowId)
         if (!isMinimized(windowId)) return;
         
         const info = minimizedWindows[windowId];
@@ -209,6 +222,11 @@ Singleton {
 
     function restoreOriginal(windowId) {
         if (!root.actionReady) return;
+        if (CompositorService.isUmbriel) {
+            UmbrielScratchpad.restoreWindow(String(windowId))
+            return
+        }
+        windowId = Number(windowId)
         if (!isMinimized(windowId)) return;
 
         const info = minimizedWindows[windowId];
@@ -233,6 +251,10 @@ Singleton {
     
     // Restore the most recently minimized window for an app
     function restoreLatestForApp(appId) {
+        if (CompositorService.isUmbriel) {
+            UmbrielScratchpad.restoreLatestForApp(appId)
+            return
+        }
         const windowIds = getMinimizedForApp(appId);
         if (windowIds.length > 0) {
             restore(windowIds[windowIds.length - 1]);
@@ -240,17 +262,27 @@ Singleton {
     }
 
     function restoreLatest() {
+        if (CompositorService.isUmbriel) {
+            UmbrielScratchpad.restoreLatest()
+            return
+        }
         if (minimizedIds.length === 0) return;
         restore(minimizedIds[minimizedIds.length - 1]);
     }
 
     function restoreLatestOriginal() {
+        if (CompositorService.isUmbriel) {
+            UmbrielScratchpad.restoreLatest()
+            return
+        }
         if (minimizedIds.length === 0) return;
         restoreOriginal(minimizedIds[minimizedIds.length - 1]);
     }
 
     function getMinimizedForOutput(outputName) {
         const output = String(outputName ?? "");
+        if (CompositorService.isUmbriel)
+            return UmbrielScratchpad.idsForOutput(output)
         return minimizedIds.filter(id => {
             const info = minimizedWindows[id];
             return info && (info.originalOutput || "") === output;
@@ -258,6 +290,10 @@ Singleton {
     }
 
     function restoreLatestForOutput(outputName, originalWorkspace = true) {
+        if (CompositorService.isUmbriel) {
+            UmbrielScratchpad.restoreLatest(outputName)
+            return
+        }
         const ids = getMinimizedForOutput(outputName);
         if (ids.length === 0) return;
         const windowId = ids[ids.length - 1];
@@ -276,6 +312,7 @@ Singleton {
 
     Connections {
         target: NiriService
+        enabled: CompositorService.isNiri
         function onWindowsChanged() {
             root.pruneMissingWindows();
         }
@@ -291,15 +328,15 @@ Singleton {
             root.minimize();
         }
 
-        function minimizeId(windowId: int): void {
+        function minimizeId(windowId: string): void {
             root.minimize(windowId);
         }
         
-        function restore(windowId: int): void {
+        function restore(windowId: string): void {
             root.restore(windowId);
         }
 
-        function restoreOriginal(windowId: int): void {
+        function restoreOriginal(windowId: string): void {
             root.restoreOriginal(windowId);
         }
     }

@@ -96,8 +96,8 @@ Scope {
         if (!win?.id)
             return;
         const appId = String(win?.app_id ?? "").toLowerCase();
-        if (appId === "spotify" && CompositorService.isNiri) {
-            MinimizedWindows.minimize(win.id);
+        if (appId === "spotify" && MinimizedWindows.actionReady
+                && MinimizedWindows.minimize(win.id)) {
             return;
         }
         CompositorService.closeWindow(win.id);

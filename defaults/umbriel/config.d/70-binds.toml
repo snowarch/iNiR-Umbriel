@@ -22,6 +22,10 @@
 "Mod+Shift+Q" = "spawn:inir session toggle"
 "Ctrl+Alt+F" = "spawn:inir equalizer toggle"
 
+# Native Umbriel scratchpad
+"Mod+Shift+Space" = { action = "window-toggle-scratchpad", repeat = false }
+"Mod+Alt+Space" = { action = "scratchpad-toggle", repeat = false }
+
 # Applications
 "Mod+T" = "spawn:inir terminal"
 "Mod+Return" = "spawn:inir terminal"

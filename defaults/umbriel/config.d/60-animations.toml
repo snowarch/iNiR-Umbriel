@@ -29,3 +29,13 @@ curve = "spring:0.98,700"
 enabled = true
 duration_ms = 250
 curve = "spring:1.0,700"
+
+[animation.scratchpad]
+enabled = true
+duration_ms = 200
+curve = "spring:1.0,700"
+dim = 0.35
+blur = false
+scale = 0.0
+maximize = false
+fullscreen = false

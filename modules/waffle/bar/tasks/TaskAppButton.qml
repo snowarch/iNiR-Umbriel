@@ -114,7 +114,24 @@ AppButton {
         
         const isAppFocused = root.wasActive;
 
-        if (CompositorService.isNiri) {
+        if (CompositorService.isUmbriel) {
+            const focused = root.appEntry.toplevels.find(t => t.activated)
+            const focusedId = String(focused?.compositorWindowId ?? "")
+            if (isAppFocused && focusedId.length > 0) {
+                MinimizedWindows.minimize(focusedId)
+                return
+            }
+            if (root.hasMinimized) {
+                MinimizedWindows.restoreLatestForApp(root.appEntry.appId)
+                return
+            }
+            const visible = root.appEntry.toplevels.find(t =>
+                !MinimizedWindows.isMinimized(t?.compositorWindowId ?? ""))
+            if (visible) {
+                visible.activate()
+                return
+            }
+        } else if (CompositorService.isNiri) {
             const windowIds = root.niriWindowIds()
 
             // Case 1: App is focused -> minimize the exact active window.
@@ -262,10 +279,7 @@ AppButton {
                     TaskbarApps.togglePin(root.appEntry.appId);
                 }
             },
-            // MinimizedWindows is the Niri hidden-workspace workaround.
-            // Do not advertise a no-op action on secondary compositors.
-            ...(CompositorService.isNiri
-                    && root.appEntry.toplevels.length > 0 ? [
+            ...(CompositorService.isNiri && root.appEntry.toplevels.length > 0 ? [
                 {
                     iconName: "caret-down",
                     text: root.multiple ? Translation.tr("Move all down") : Translation.tr("Move down"),
@@ -274,7 +288,17 @@ AppButton {
                             MinimizedWindows.minimize(id)
                     }
                 }
-            ] : []),
+            ] : (CompositorService.isUmbriel && root.active ? [
+                {
+                    iconName: "caret-down",
+                    text: Translation.tr("Move to scratchpad"),
+                    action: () => {
+                        const focused = root.appEntry.toplevels.find(t => t.activated)
+                        if (focused?.compositorWindowId)
+                            MinimizedWindows.minimize(focused.compositorWindowId)
+                    }
+                }
+            ] : [])),
             ...(root.appEntry.toplevels.length > 0 ? [
                 {
                     iconName: "dismiss",

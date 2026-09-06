@@ -61,6 +61,7 @@ singleton Todo 1.0 Todo.qml
 singleton Translation 1.0 Translation.qml
 singleton TrayService 1.0 TrayService.qml
 singleton UmbrielService 1.0 UmbrielService.qml
+singleton UmbrielScratchpad 1.0 UmbrielScratchpad.qml
 singleton Updates 1.0 Updates.qml
 singleton VoiceSearch 1.0 VoiceSearch.qml
 singleton Wallhaven 1.0 Wallhaven.qml
