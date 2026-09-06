@@ -2,23 +2,22 @@
   <img src="https://github.com/user-attachments/assets/da6beb4a-ccee-40ba-a372-5eea77b595f8" alt="iNiR" width="800">
 </p>
 
-<h1 align="center">iNiR</h1>
+<h1 align="center">iNiR-Umbriel</h1>
 
 <p align="center">
-  <b>A complete desktop shell for Niri, built on Quickshell</b>
+  <b>iNiR adapted for the Umbriel Wayland compositor, built on Quickshell</b>
 </p>
 
 <p align="center">
-  <a href="https://github.com/snowarch/inir/releases"><img src="https://img.shields.io/badge/version-2.30.0-blue?style=flat-square" alt="Version"></a>
-  <a href="https://github.com/snowarch/inir/stargazers"><img src="https://img.shields.io/github/stars/snowarch/inir?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/snowarch/iNiR-Umbriel/releases"><img src="https://img.shields.io/badge/version-2.30.0-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/snowarch/iNiR-Umbriel/stargazers"><img src="https://img.shields.io/github/stars/snowarch/iNiR-Umbriel?style=flat-square" alt="Stars"></a>
   <a href="https://discord.gg/pAPTfAhZUJ"><img src="https://img.shields.io/badge/Discord-join-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-green?style=flat-square" alt="License"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/snowarch/inir/wiki/INSTALL">Install</a> &bull;
-  <a href="https://github.com/snowarch/inir/wiki/KEYBINDS">Keybinds</a> &bull;
-  <a href="https://github.com/snowarch/inir/wiki/IPC">IPC Reference</a> &bull;
+  <a href="#quick-start">Install</a> &bull;
+  <a href="docs/IPC.md">IPC Reference</a> &bull;
   <a href="https://discord.gg/pAPTfAhZUJ">Discord</a> &bull;
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
@@ -40,7 +39,7 @@ iNiR is your entire desktop. The bar at the top, the dock, notifications, settin
 
 ### What do I need to run it?
 
-A compositor. That's the thing that handles your windows and puts pixels on screen. iNiR is made for [Niri](https://github.com/YaLTeR/niri) (a tiling Wayland compositor). There's some old Hyprland code from when this was a fork of end-4's dots, but Niri is what I actually use and test.
+A compositor. That's the thing that handles your windows and puts pixels on screen. This repository is the Umbriel port of iNiR and targets [Umbriel](https://github.com/noctalia-dev/umbriel). The original Niri edition remains separate in [snowarch/iNiR](https://github.com/snowarch/iNiR).
 
 The shell runs on [Quickshell](https://quickshell.outfoxxed.me/), a framework for building shells in QML (Qt's UI language). You don't need to know any of that to use it though, everything is configurable through the GUI or a JSON file.
 
@@ -199,10 +198,10 @@ Right sidebar:
 ## Quick Start
 
 ```bash
-git clone https://github.com/snowarch/inir.git
-cd inir
-./setup install       # interactive, asks before each step
-./setup install -y    # automatic, no questions asked
+git clone https://github.com/snowarch/iNiR-Umbriel.git
+cd iNiR-Umbriel
+./setup install                         # detects installed compositors and asks what to prepare
+./setup install --compositor umbriel   # prepare Umbriel explicitly
 ```
 
 The installer handles dependencies, system config and theming. After install, run `inir run` to start the shell, or log out and back in.
