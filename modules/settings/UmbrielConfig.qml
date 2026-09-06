@@ -882,7 +882,7 @@ ContentPage {
         SettingsGroup {
             StyledText {
                 Layout.fillWidth: true
-                text: Translation.tr("Mode, scale, rotation and VRR use Umbriel's native output configuration. Every change starts as a 15-second preview backed by an external systemd rollback, so it still reverts if iNiR crashes or the new mode makes the shell unusable.")
+                text: Translation.tr("Mode, scale, rotation, VRR, tearing, direct scanout and HDR use Umbriel's native output configuration. Every change starts as a 15-second preview backed by an external systemd rollback, so it still reverts if iNiR crashes or the new mode makes the shell unusable.")
                 color: Appearance.colors.colSubtext
                 font.pixelSize: Appearance.font.pixelSize.small
                 wrapMode: Text.WordWrap
@@ -939,6 +939,12 @@ ContentPage {
                         { displayName: Translation.tr("Disabled"), value: "disabled" },
                         { displayName: Translation.tr("Always"), value: "always" },
                         { displayName: Translation.tr("Fullscreen only"), value: "fullscreen" }
+                    ]
+                    readonly property var hdrModes: [
+                        { displayName: Translation.tr("Off"), value: "off" },
+                        { displayName: Translation.tr("On"), value: "on" },
+                        { displayName: Translation.tr("Automatic"), value: "auto" },
+                        { displayName: Translation.tr("Fullscreen"), value: "fullscreen" }
                     ]
 
                     SettingsDivider {}
@@ -1020,6 +1026,41 @@ ContentPage {
                                 const choice = model[currentIndex]
                                 if (choice && choice.value !== root.outputConfigValue(outputDelegate.modelData, "vrr", "disabled"))
                                     root.previewOutput(outputDelegate.modelData, "vrr", choice.value)
+                            }
+                        }
+                    }
+
+                    SettingsSwitch {
+                        buttonIcon: "speed"
+                        text: Translation.tr("Allow tearing")
+                        description: Translation.tr("Lets eligible fullscreen clients request asynchronous presentation. Window rules can still override the client hint.")
+                        enabled: root.canEdit && !outputPreviewProcess.running
+                        checked: root.outputConfigValue(outputDelegate.modelData, "tearing", false) === true
+                        onToggledByUser: checked => root.previewOutput(outputDelegate.modelData, "tearing", checked)
+                    }
+
+                    SettingsSwitch {
+                        buttonIcon: "bolt"
+                        text: Translation.tr("Allow direct scanout")
+                        description: Translation.tr("Lets eligible fullscreen buffers bypass composition on this output when Umbriel can do so safely.")
+                        enabled: root.canEdit && !outputPreviewProcess.running
+                        checked: root.outputConfigValue(outputDelegate.modelData, "direct_scanout", true) === true
+                        onToggledByUser: checked => root.previewOutput(outputDelegate.modelData, "direct_scanout", checked)
+                    }
+
+                    ContentSubsection {
+                        title: Translation.tr("HDR policy")
+                        tooltip: Translation.tr("Umbriel can keep HDR off, force it on, follow HDR-capable fullscreen content, or enable it for any fullscreen surface.")
+                        StyledComboBox {
+                            Layout.fillWidth: true
+                            enabled: root.canEdit && !outputPreviewProcess.running
+                            model: outputDelegate.hdrModes
+                            textRole: "displayName"
+                            currentIndex: root.choiceIndex(model, root.outputConfigValue(outputDelegate.modelData, "hdr", "off"))
+                            onActivated: {
+                                const choice = model[currentIndex]
+                                if (choice && choice.value !== root.outputConfigValue(outputDelegate.modelData, "hdr", "off"))
+                                    root.previewOutput(outputDelegate.modelData, "hdr", choice.value)
                             }
                         }
                     }
