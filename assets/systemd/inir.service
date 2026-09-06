@@ -1,13 +1,8 @@
 [Unit]
 Description=iNiR shell
-# Niri owns the graphical-session environment.  Since niri.service is
-# Type=notify, ordering after it guarantees DISPLAY, WAYLAND_DISPLAY and
-# NIRI_SOCKET have already been published to the user manager before iNiR starts.
-PartOf=niri.service
-Requisite=niri.service
-After=niri.service
-# Keep the StatusNotifier watcher ready before desktop autostart applications
-# register tray items.  Niri also orders itself before this target.
+# Compositor lifecycle is attached by inir service enable through
+# inir.service.d/compositor.conf after the compositor publishes its session environment.
+# Keep the StatusNotifier watcher ready before desktop autostart applications register tray items.
 Before=xdg-desktop-autostart.target
 # Rate-limit restarts: max 3 attempts in 30 seconds, then stop trying.
 # These MUST live in [Unit], not [Service] — systemd ignores them elsewhere.

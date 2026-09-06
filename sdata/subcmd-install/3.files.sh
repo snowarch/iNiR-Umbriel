@@ -188,27 +188,15 @@ case "${SKIP_QUICKSHELL}" in
     fi
 
     if [[ -f "$_service_target" ]]; then
-      # Wire to compositor-specific wants so inir only starts under the correct
-      # compositor — NOT under KDE/GNOME/etc.  Never fall back to
-      # graphical-session.target: that target is active in ANY desktop session.
       local _comp_target=""
-      if systemctl --user cat niri.service &>/dev/null; then
-        _comp_target="niri.service"
-      fi
-
-      if [[ -n "$_comp_target" ]]; then
-        local _wants_dir="${XDG_CONFIG_HOME}/systemd/user/${_comp_target}.wants"
-        if mkdir -p "$_wants_dir" \
-            && ln -sf "${XDG_CONFIG_HOME}/systemd/user/inir.service" "$_wants_dir/inir.service" \
-            && systemctl --user daemon-reload >/dev/null 2>&1 \
-            && [[ -e "$_wants_dir/inir.service" || -L "$_wants_dir/inir.service" ]]; then
-          log_success "User inir.service enabled (wired to ${_comp_target})"
-        else
-          log_warning "Could not wire inir.service to ${_comp_target} — run 'inir service enable'"
-        fi
+      _comp_target="$(inir_detect_compositor_service 2>/dev/null || true)"
+      if [[ -n "$_comp_target" ]] && ensure_user_inir_service_enabled; then
+        log_success "User inir.service enabled (wired to ${_comp_target})"
+      elif [[ -n "$_comp_target" ]]; then
+        log_warning "Could not wire inir.service to ${_comp_target} — run 'inir service enable'"
       else
-        log_warning "niri.service not detected"
-        log_warning "inir.service not enabled — start Niri as a managed session and run 'inir service enable'"
+        log_warning "No supported compositor session detected"
+        log_warning "inir.service not enabled — start Niri or Umbriel, then run 'inir service enable'"
       fi
     fi
 
@@ -261,85 +249,118 @@ esac
 #####################################################################################
 tui_info "Installing config files..."
 
-# Niri config
-case "${SKIP_NIRI}" in
-  true) sleep 0;;
-  *)
-    NIRI_CONFIG="${XDG_CONFIG_HOME}/niri/config.kdl"
+INSTALL_COMPOSITOR_TARGET="$(inir_detect_compositor_service 2>/dev/null || true)"
 
-    # On updates, preserve the user's config and only patch launcher/theme bits.
-    # On first run, always install iNiR defaults (backup_clashing_targets already
-    # saved the pre-existing config to the backup dir).
-    if [[ "${INSTALL_FIRSTRUN}" == true ]]; then
-      if [[ -d "defaults/niri" ]]; then
+if [[ "$INSTALL_COMPOSITOR_TARGET" == "umbriel-session.target" ]]; then
+  UMBRIEL_CONFIG="${XDG_CONFIG_HOME}/umbriel/config.toml"
+  if [[ -f "$UMBRIEL_CONFIG" ]]; then
+    log_success "Preserving existing Umbriel config"
+  elif [[ -d "defaults/umbriel" ]]; then
+    install_dir__sync "defaults/umbriel" "${XDG_CONFIG_HOME}/umbriel"
+    log_success "Umbriel config installed (defaults)"
+  fi
+
+  UMBRIEL_ENV_CFG="${XDG_CONFIG_HOME}/umbriel/config.d/40-environment.toml"
+  UMBRIEL_STARTUP_CFG="${XDG_CONFIG_HOME}/umbriel/config.d/50-startup.toml"
+  if [[ -f "$UMBRIEL_CONFIG" ]]; then
+    POLKIT_AGENT="$(get-polkit-agent)"
+    if [[ -n "$POLKIT_AGENT" && -f "$UMBRIEL_STARTUP_CFG" ]]; then
+      sed -i "s|\"/usr/lib/mate-polkit/polkit-mate-authentication-agent-1\"|\"${POLKIT_AGENT}\"|" "$UMBRIEL_STARTUP_CFG"
+      log_success "Polkit agent: $(basename "$(dirname "$POLKIT_AGENT")")/$(basename "$POLKIT_AGENT")"
+    elif [[ -z "$POLKIT_AGENT" ]]; then
+      log_warning "No polkit agent found — sudo dialogs may not work"
+    fi
+
+    if pacman -Q plasma-integration &>/dev/null 2>&1 || \
+       dpkg -l plasma-integration 2>/dev/null | grep -q '^ii' || \
+       rpm -q plasma-integration &>/dev/null 2>&1; then
+      log_success "Qt theme: kde (plasma-integration detected)"
+    elif [[ -f "$UMBRIEL_ENV_CFG" ]]; then
+      sed -i 's/QT_QPA_PLATFORMTHEME = "kde"/QT_QPA_PLATFORMTHEME = "qt6ct"/' "$UMBRIEL_ENV_CFG"
+      log_warning "Qt theme: qt6ct (plasma-integration not found — install it for proper Qt theming)"
+    fi
+  fi
+else
+  # Niri config
+  case "${SKIP_NIRI}" in
+    true) sleep 0;;
+    *)
+      NIRI_CONFIG="${XDG_CONFIG_HOME}/niri/config.kdl"
+
+      # On updates, preserve the user's config and only patch launcher/theme bits.
+      # On first run, always install iNiR defaults (backup_clashing_targets already
+      # saved the pre-existing config to the backup dir).
+      if [[ "${INSTALL_FIRSTRUN}" == true ]]; then
+        if [[ -d "defaults/niri" ]]; then
+          install_dir__sync "defaults/niri" "${XDG_CONFIG_HOME}/niri"
+          log_success "Niri config installed (defaults)"
+        elif [[ -d "dots/.config/niri" ]]; then
+          install_dir__sync "dots/.config/niri" "${XDG_CONFIG_HOME}/niri"
+          log_success "Niri config installed (dots)"
+        fi
+      elif [[ -f "$NIRI_CONFIG" ]]; then
+        log_success "Preserving existing Niri config"
+      elif [[ -d "defaults/niri" ]]; then
         install_dir__sync "defaults/niri" "${XDG_CONFIG_HOME}/niri"
         log_success "Niri config installed (defaults)"
       elif [[ -d "dots/.config/niri" ]]; then
         install_dir__sync "dots/.config/niri" "${XDG_CONFIG_HOME}/niri"
         log_success "Niri config installed (dots)"
       fi
-    elif [[ -f "$NIRI_CONFIG" ]]; then
-      log_success "Preserving existing Niri config"
-    elif [[ -d "defaults/niri" ]]; then
-      install_dir__sync "defaults/niri" "${XDG_CONFIG_HOME}/niri"
-      log_success "Niri config installed (defaults)"
-    elif [[ -d "dots/.config/niri" ]]; then
-      install_dir__sync "dots/.config/niri" "${XDG_CONFIG_HOME}/niri"
-      log_success "Niri config installed (dots)"
-    fi
 
-    # Patch config.kdl: detect polkit agent
-    NIRI_CFG="${XDG_CONFIG_HOME}/niri/config.kdl"
-    NIRI_ENV_CFG="${XDG_CONFIG_HOME}/niri/config.d/40-environment.kdl"
-    NIRI_STARTUP_CFG="${XDG_CONFIG_HOME}/niri/config.d/50-startup.kdl"
-    NIRI_BINDS_CFG="${XDG_CONFIG_HOME}/niri/config.d/70-binds.kdl"
-    NIRI_ENV_TARGET="${NIRI_CFG}"
-    NIRI_STARTUP_TARGET="${NIRI_CFG}"
-    NIRI_BINDS_TARGET="${NIRI_CFG}"
+      # Patch config.kdl: detect polkit agent
+      NIRI_CFG="${XDG_CONFIG_HOME}/niri/config.kdl"
+      NIRI_ENV_CFG="${XDG_CONFIG_HOME}/niri/config.d/40-environment.kdl"
+      NIRI_STARTUP_CFG="${XDG_CONFIG_HOME}/niri/config.d/50-startup.kdl"
+      NIRI_BINDS_CFG="${XDG_CONFIG_HOME}/niri/config.d/70-binds.kdl"
+      NIRI_ENV_TARGET="${NIRI_CFG}"
+      NIRI_STARTUP_TARGET="${NIRI_CFG}"
+      NIRI_BINDS_TARGET="${NIRI_CFG}"
 
-    [[ -f "$NIRI_ENV_CFG" ]] && NIRI_ENV_TARGET="$NIRI_ENV_CFG"
-    [[ -f "$NIRI_STARTUP_CFG" ]] && NIRI_STARTUP_TARGET="$NIRI_STARTUP_CFG"
-    [[ -f "$NIRI_BINDS_CFG" ]] && NIRI_BINDS_TARGET="$NIRI_BINDS_CFG"
+      [[ -f "$NIRI_ENV_CFG" ]] && NIRI_ENV_TARGET="$NIRI_ENV_CFG"
+      [[ -f "$NIRI_STARTUP_CFG" ]] && NIRI_STARTUP_TARGET="$NIRI_STARTUP_CFG"
+      [[ -f "$NIRI_BINDS_CFG" ]] && NIRI_BINDS_TARGET="$NIRI_BINDS_CFG"
 
-    if [[ -f "$NIRI_CFG" ]]; then
-      POLKIT_AGENT="$(get-polkit-agent)"
-      if [[ -n "$POLKIT_AGENT" ]]; then
-        sed -i "s|spawn-at-startup \"/usr/lib/mate-polkit/polkit-mate-authentication-agent-1\"|spawn-at-startup \"${POLKIT_AGENT}\"|" "$NIRI_STARTUP_TARGET"
-        log_success "Polkit agent: $(basename "$(dirname "$POLKIT_AGENT")")/$(basename "$POLKIT_AGENT")"
-      else
-        log_warning "No polkit agent found — sudo dialogs may not work"
+      if [[ -f "$NIRI_CFG" ]]; then
+        POLKIT_AGENT="$(get-polkit-agent)"
+        if [[ -n "$POLKIT_AGENT" ]]; then
+          sed -i "s|spawn-at-startup \"/usr/lib/mate-polkit/polkit-mate-authentication-agent-1\"|spawn-at-startup \"${POLKIT_AGENT}\"|" "$NIRI_STARTUP_TARGET"
+          log_success "Polkit agent: $(basename "$(dirname "$POLKIT_AGENT")")/$(basename "$POLKIT_AGENT")"
+        else
+          log_warning "No polkit agent found — sudo dialogs may not work"
+        fi
+
+        # Patch config.kdl: detect QT platform theme
+        # plasma-integration provides the "kde" QPA platform theme plugin which reads
+        # colors from kdeglobals. Without it, Qt apps can't use KDE color schemes.
+        # We check for plasma-integration (not plasma-desktop) because it can be
+        # installed standalone for KDE theming without the full Plasma desktop.
+        if pacman -Q plasma-integration &>/dev/null 2>&1 || \
+           dpkg -l plasma-integration 2>/dev/null | grep -q '^ii' || \
+           rpm -q plasma-integration &>/dev/null 2>&1; then
+          : # plasma-integration installed — keep "kde" platform theme (reads kdeglobals)
+          log_success "Qt theme: kde (plasma-integration detected)"
+        else
+          # No plasma-integration: fall back to qt6ct
+          # NOTE: This is suboptimal — Darkly style won't read kdeglobals colors properly.
+          # The user should install plasma-integration for correct Material You Qt theming.
+          sed -i 's/QT_QPA_PLATFORMTHEME "kde"/QT_QPA_PLATFORMTHEME "qt6ct"/' "$NIRI_ENV_TARGET"
+          log_warning "Qt theme: qt6ct (plasma-integration not found — install it for proper Qt theming)"
+        fi
+
+        if niri_can_resolve_launcher_dir "$XDG_BIN_HOME"; then
+          sed -i \
+            -e 's|spawn "bash" "-lc" "exec \"\$(inir path)/scripts/launch-terminal.sh\""|spawn "inir" "terminal"|' \
+            -e 's|spawn "bash" "-lc" "exec \"\$(inir path)/scripts/close-window.sh\""|spawn "inir" "close-window"|' \
+            -e 's|spawn "[^"]*/inir" "|spawn "inir" "|g' \
+            "$NIRI_BINDS_TARGET"
+        else
+          log_warning "Niri is still running without ${XDG_BIN_HOME} in PATH — preserving existing launcher paths until the next session"
+        fi
       fi
-
-      # Patch config.kdl: detect QT platform theme
-      # plasma-integration provides the "kde" QPA platform theme plugin which reads
-      # colors from kdeglobals. Without it, Qt apps can't use KDE color schemes.
-      # We check for plasma-integration (not plasma-desktop) because it can be
-      # installed standalone for KDE theming without the full Plasma desktop.
-      if pacman -Q plasma-integration &>/dev/null 2>&1 || \
-         dpkg -l plasma-integration 2>/dev/null | grep -q '^ii' || \
-         rpm -q plasma-integration &>/dev/null 2>&1; then
-        : # plasma-integration installed — keep "kde" platform theme (reads kdeglobals)
-        log_success "Qt theme: kde (plasma-integration detected)"
-      else
-        # No plasma-integration: fall back to qt6ct
-        # NOTE: This is suboptimal — Darkly style won't read kdeglobals colors properly.
-        # The user should install plasma-integration for correct Material You Qt theming.
-        sed -i 's/QT_QPA_PLATFORMTHEME "kde"/QT_QPA_PLATFORMTHEME "qt6ct"/' "$NIRI_ENV_TARGET"
-        log_warning "Qt theme: qt6ct (plasma-integration not found — install it for proper Qt theming)"
-      fi
-
-      if niri_can_resolve_launcher_dir "$XDG_BIN_HOME"; then
-        sed -i \
-          -e 's|spawn "bash" "-lc" "exec \"\$(inir path)/scripts/launch-terminal.sh\""|spawn "inir" "terminal"|' \
-          -e 's|spawn "bash" "-lc" "exec \"\$(inir path)/scripts/close-window.sh\""|spawn "inir" "close-window"|' \
-          -e 's|spawn "[^"]*/inir" "|spawn "inir" "|g' \
-          "$NIRI_BINDS_TARGET"
-      else
-        log_warning "Niri is still running without ${XDG_BIN_HOME} in PATH — preserving existing launcher paths until the next session"
-      fi
-    fi
-    ;;
-esac
+      ;;
+  esac
+fi
 
 # Theming templates — defaults/ is the primary source (kept in sync with dots/)
 if [[ -d "defaults/matugen" ]]; then
@@ -673,19 +694,23 @@ v gen_firstrun
 v dedup_and_sort_listfile "${INSTALLED_LISTFILE}" "${INSTALLED_LISTFILE}"
 
 #####################################################################################
-# Environment variables are configured in Niri
+# Environment variables
 #####################################################################################
 tui_info "Configuring environment variables..."
 
-# Primary: environment {} block in Niri config.kdl (already installed)
-# Secondary: shell profile files for terminals outside Niri session (SSH, TTY, etc.)
-
-# Verify Niri config has the variable
-if grep -q "INIR_VENV" "${XDG_CONFIG_HOME}/niri/config.kdl" 2>/dev/null || \
-   grep -q "ILLOGICAL_IMPULSE_VIRTUAL_ENV" "${XDG_CONFIG_HOME}/niri/config.kdl" 2>/dev/null; then
-    log_success "Environment variable configured in Niri config"
+if [[ "$INSTALL_COMPOSITOR_TARGET" == "umbriel-session.target" ]]; then
+  if grep -q '^\[environment\]' "${XDG_CONFIG_HOME}/umbriel/config.d/40-environment.toml" 2>/dev/null; then
+    log_success "Environment configured in Umbriel config"
+  else
+    log_warning "Umbriel environment config not found"
+  fi
 else
+  if grep -q "INIR_VENV" "${XDG_CONFIG_HOME}/niri/config.kdl" 2>/dev/null || \
+     grep -q "ILLOGICAL_IMPULSE_VIRTUAL_ENV" "${XDG_CONFIG_HOME}/niri/config.kdl" 2>/dev/null; then
+    log_success "Environment variable configured in Niri config"
+  else
     log_warning "INIR_VENV not found in Niri config"
+  fi
 fi
 
 # Write shell profile env vars (for SSH, TTY, non-Niri terminals)
@@ -1095,7 +1120,7 @@ if [[ -n "${II_TARGET}" && -d "${II_TARGET}" ]]; then
   if [[ -f "${REPO_ROOT}/VERSION" ]]; then
     REPO_VERSION=$(cat "${REPO_ROOT}/VERSION" | tr -d '[:space:]')
   fi
-  if command -v git &>/dev/null && [[ -d "${REPO_ROOT}/.git" ]]; then
+  if command -v git &>/dev/null && [[ -e "${REPO_ROOT}/.git" ]]; then
     REPO_COMMIT=$(git -C "${REPO_ROOT}" rev-parse --short HEAD 2>/dev/null || echo "")
   fi
   write_version_info_json "${II_TARGET}/version.json" "${REPO_VERSION:-0.0.0}" "${REPO_COMMIT:-unknown}" "setup-install"
@@ -1107,12 +1132,20 @@ fi
 #####################################################################################
 WARNINGS=()
 
-if ! command -v niri >/dev/null; then
-  WARNINGS+=("Niri compositor not found in PATH")
-fi
-
-if [[ ! -f "${XDG_CONFIG_HOME}/niri/config.kdl" ]]; then
-  WARNINGS+=("Niri config not found at ~/.config/niri/config.kdl")
+if [[ "$INSTALL_COMPOSITOR_TARGET" == "umbriel-session.target" ]]; then
+  if ! command -v umbriel >/dev/null; then
+    WARNINGS+=("Umbriel compositor not found in PATH")
+  fi
+  if [[ ! -f "${XDG_CONFIG_HOME}/umbriel/config.toml" ]]; then
+    WARNINGS+=("Umbriel config not found at ~/.config/umbriel/config.toml")
+  fi
+else
+  if ! command -v niri >/dev/null; then
+    WARNINGS+=("Niri compositor not found in PATH")
+  fi
+  if [[ ! -f "${XDG_CONFIG_HOME}/niri/config.kdl" ]]; then
+    WARNINGS+=("Niri config not found at ~/.config/niri/config.kdl")
+  fi
 fi
 
 if ! command -v qs >/dev/null; then
@@ -1131,8 +1164,10 @@ if ! ${quiet:-false}; then
 
   # Critical QML files
   _VERIFY_ERRORS=0
+  _COMPOSITOR_SERVICE="services/NiriService.qml"
+  [[ "$INSTALL_COMPOSITOR_TARGET" == "umbriel-session.target" ]] && _COMPOSITOR_SERVICE="services/UmbrielService.qml"
   for _crit_file in "shell.qml" "GlobalStates.qml" "modules/common/Config.qml" \
-                    "modules/common/Appearance.qml" "services/NiriService.qml"; do
+                    "modules/common/Appearance.qml" "$_COMPOSITOR_SERVICE"; do
     if [[ -f "${II_TARGET:-${XDG_CONFIG_HOME}/quickshell/inir}/${_crit_file}" ]]; then
       tui_verify_ok "${_crit_file}"
     else
@@ -1143,8 +1178,10 @@ if ! ${quiet:-false}; then
 
   # Config files
   echo ""
+  _COMPOSITOR_CONFIG="${XDG_CONFIG_HOME}/niri/config.kdl:Niri config"
+  [[ "$INSTALL_COMPOSITOR_TARGET" == "umbriel-session.target" ]] && _COMPOSITOR_CONFIG="${XDG_CONFIG_HOME}/umbriel/config.toml:Umbriel config"
   for _cfg_path \
-    in "${XDG_CONFIG_HOME}/niri/config.kdl:Niri config" \
+    in "$_COMPOSITOR_CONFIG" \
        "${DOTS_CORE_CONFDIR}/config.json:iNiR config" \
        "${XDG_CONFIG_HOME}/matugen:Theming templates" \
        "${XDG_CONFIG_HOME}/fuzzel:Fuzzel config" \

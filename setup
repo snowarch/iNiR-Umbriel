@@ -5,7 +5,7 @@
 resolve_bootstrap_repo_root() {
     local script_dir="$1"
 
-    if [[ -d "${script_dir}/.git" && -f "${script_dir}/setup" && -f "${script_dir}/shell.qml" ]]; then
+    if [[ -e "${script_dir}/.git" && -f "${script_dir}/setup" && -f "${script_dir}/shell.qml" ]]; then
         printf '%s' "$script_dir"
         return
     fi
@@ -96,6 +96,7 @@ trap 'type _tui_kill_spinner &>/dev/null && _tui_kill_spinner 2>/dev/null || tru
 # Load core libraries
 source ./sdata/lib/environment-variables.sh
 source ./sdata/lib/functions.sh
+source "${REPO_ROOT}/scripts/lib/compositor.sh"
 source ./sdata/lib/tui.sh
 source ./sdata/lib/package-installers.sh
 source ./sdata/lib/dist-determine.sh
@@ -324,28 +325,16 @@ ensure_user_inir_service_enabled() {
         return 1
     fi
 
-    # iNiR is Niri-only. Never fall back to graphical-session.target or another
-    # compositor service: Niri owns the session environment and lifecycle.
     local target=""
-    if systemctl --user cat niri.service &>/dev/null; then
-        target="niri.service"
-    fi
+    target="$(inir_detect_compositor_service 2>/dev/null || true)"
+    [[ -n "$target" ]] || return 1
 
-    if [[ -z "$target" ]]; then
-        return 1  # no compositor found — don't enable
-    fi
-
-    local wants_dir="${XDG_CONFIG_HOME}/systemd/user/${target}.wants"
-    local changed=false
-    if [[ ! -e "$wants_dir/inir.service" ]]; then
-        mkdir -p "$wants_dir" || return 1
-        ln -sf "$service_path" "$wants_dir/inir.service" || return 1
-        changed=true
-    fi
-
-    if [[ "$changed" == true ]]; then
-        systemctl --user daemon-reload >/dev/null 2>&1 || return 1
-    fi
+    local user_service_dir="${XDG_CONFIG_HOME}/systemd/user"
+    local wants_dir="${user_service_dir}/${target}.wants"
+    mkdir -p "$wants_dir" || return 1
+    inir_write_compositor_lifecycle_dropin "$target" "$user_service_dir" || return 1
+    ln -sf "$service_path" "$wants_dir/inir.service" || return 1
+    systemctl --user daemon-reload >/dev/null 2>&1 || return 1
     [[ -e "$wants_dir/inir.service" || -L "$wants_dir/inir.service" ]]
 }
 
@@ -411,7 +400,7 @@ setup_remote_state_summary() {
         return
     fi
 
-    if [[ ! -d "${REPO_ROOT}/.git" ]] || ! declare -F check_remote_updates >/dev/null 2>&1; then
+    if [[ ! -e "${REPO_ROOT}/.git" ]] || ! declare -F check_remote_updates >/dev/null 2>&1; then
         printf '%s' "unavailable"
         return
     fi
@@ -439,7 +428,7 @@ setup_runtime_change_summary() {
             return
             ;;
         repo-link)
-            if [[ -d "${REPO_ROOT}/.git" ]]; then
+            if [[ -e "${REPO_ROOT}/.git" ]]; then
                 local dirty_count
                 dirty_count="$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
                 if [[ "${dirty_count:-0}" -eq 0 ]]; then
@@ -511,7 +500,7 @@ show_setup_context_card() {
         "Service:${service_links}"
     )
 
-    if [[ -d "${REPO_ROOT}/.git" ]]; then
+    if [[ -e "${REPO_ROOT}/.git" ]]; then
         pairs+=("Branch:${current_branch}")
         [[ "$current_branch" == "HEAD" ]] && pairs+=("Tracks:origin/${tracked_branch}")
     fi
@@ -1079,11 +1068,12 @@ show_status() {
         tui_check_warn "Runtime metadata missing"
     fi
 
-    # Check Niri
-    if [[ -n "$NIRI_SOCKET" ]]; then
+    if [[ -n "${UMBRIEL_SOCKET:-}" ]]; then
+        tui_check_ok "Umbriel compositor detected"
+    elif [[ -n "${NIRI_SOCKET:-}" ]]; then
         tui_check_ok "Niri compositor detected"
     else
-        tui_check_warn "Not running in Niri session"
+        tui_check_warn "Not running in a supported compositor session"
     fi
 
     # Pending migrations
@@ -1145,7 +1135,9 @@ show_info() {
     local session_type="${XDG_SESSION_TYPE:-unknown}"
 
     local compositor="Not detected"
-    if [[ -n "$NIRI_SOCKET" ]]; then
+    if [[ -n "${UMBRIEL_SOCKET:-}" ]]; then
+        compositor="Umbriel"
+    elif [[ -n "${NIRI_SOCKET:-}" ]]; then
         compositor="Niri"
     elif [[ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]]; then
         compositor="Hyprland"
@@ -1705,7 +1697,7 @@ run_logs() {
 # Install completion — useful next steps without making first-run feel like a log dump
 ###############################################################################
 show_install_completion() {
-    local version distro package_manager host gpu ram compositor
+    local version distro package_manager host gpu ram compositor compositor_target login_compositor
     version="$(get_repo_version)"
     distro="${DETECTED_DISTRO:-${OS_PRETTY_NAME:-Linux}}"
     package_manager="${DETECTED_PACKAGE_MANAGER:-$(get_package_manager 2>/dev/null || echo unknown)}"
@@ -1714,9 +1706,12 @@ show_install_completion() {
     gpu="${DETECTED_GPU:-unknown}"
     ram="${DETECTED_RAM_GIB:-?} GiB"
     compositor="${DETECTED_DE:-${XDG_CURRENT_DESKTOP:-not detected}}"
+    compositor_target="$(inir_detect_compositor_service 2>/dev/null || true)"
+    login_compositor="Niri"
+    [[ "$compositor_target" == "umbriel-session.target" ]] && login_compositor="Umbriel"
 
     tui_alert "success" "iNiR is ready" \
-        "Version ${version} is installed. You can start the shell now or begin with a clean Niri login."
+        "Version ${version} is installed. You can start the shell now or begin with a clean ${login_compositor} login."
 
     tui_summary_card "This install" \
         "Distro:${distro}" \
@@ -1727,10 +1722,10 @@ show_install_completion() {
         "Session:${compositor}"
 
     tui_section_start "Good next moves"
-    if [[ -n "${NIRI_SOCKET:-}" ]]; then
+    if [[ -n "${NIRI_SOCKET:-}" || -n "${UMBRIEL_SOCKET:-}" ]]; then
         tui_list_item "Start/reload now: inir restart"
     else
-        tui_list_item "Log out, choose Niri in your login screen, then sign back in"
+        tui_list_item "Log out, choose ${login_compositor} in your login screen, then sign back in"
     fi
     tui_list_item "Open Settings: inir settings"
     tui_list_item "Check health: inir doctor"
@@ -2751,10 +2746,12 @@ run_update() {
         fi
     fi
 
+    local update_compositor_target
+    update_compositor_target="$(inir_detect_compositor_service 2>/dev/null || true)"
     local niri_config="${XDG_CONFIG_HOME}/niri/config.kdl"
     local niri_startup_cfg="${XDG_CONFIG_HOME}/niri/config.d/50-startup.kdl"
     local niri_binds_cfg="${XDG_CONFIG_HOME}/niri/config.d/70-binds.kdl"
-    if [[ -f "$niri_config" && -x "${XDG_BIN_HOME}/inir" ]]; then
+    if [[ "$update_compositor_target" != "umbriel-session.target" && -f "$niri_config" && -x "${XDG_BIN_HOME}/inir" ]]; then
         if niri_can_resolve_launcher_dir "$XDG_BIN_HOME"; then
             if [[ -f "$niri_binds_cfg" ]]; then
                 sed -i \

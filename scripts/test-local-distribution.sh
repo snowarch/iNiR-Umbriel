@@ -24,15 +24,70 @@ bash -n \
 
 step "session tray ordering"
 service_unit="$runtime_root/assets/systemd/inir.service"
+compositor_helper="$runtime_root/scripts/lib/compositor.sh"
 if ! grep -qx 'Type=dbus' "$service_unit" \
         || ! grep -qx 'BusName=org.kde.StatusNotifierWatcher' "$service_unit" \
-        || ! grep -qx 'PartOf=niri.service' "$service_unit" \
-        || ! grep -qx 'Requisite=niri.service' "$service_unit" \
-        || ! grep -qx 'After=niri.service' "$service_unit" \
-        || ! grep -qx 'Before=xdg-desktop-autostart.target' "$service_unit"; then
-    printf 'FAIL: inir.service is not ordered behind Niri and ahead of XDG autostart\n' >&2
+        || ! grep -qx 'Before=xdg-desktop-autostart.target' "$service_unit" \
+        || grep -Eq '^(PartOf|Requisite|After)=(niri\.service|umbriel-session\.target)$' "$service_unit" \
+        || ! grep -Fq 'niri.service|umbriel-session.target' "$compositor_helper"; then
+    printf 'FAIL: inir.service base unit is not compositor-neutral with explicit lifecycle owners\n' >&2
     exit 1
 fi
+
+service_lifecycle_root="$(mktemp -d)"
+mkdir -p "$service_lifecycle_root/bin" "$service_lifecycle_root/xdg/systemd/user"
+cat > "$service_lifecycle_root/bin/systemctl" <<'SH'
+#!/usr/bin/env bash
+case "${1:-} ${2:-}" in
+    "--user show-environment") printf '%s\n' "${INIR_TEST_MANAGER_ENV:-}" ;;
+    "--user cat")
+        case "${3:-}" in
+            niri.service) [[ " ${INIR_TEST_AVAILABLE:-} " == *" niri "* ]] ;;
+            umbriel-session.target) [[ " ${INIR_TEST_AVAILABLE:-} " == *" umbriel "* ]] ;;
+            *) exit 1 ;;
+        esac
+        ;;
+    "--user is-active")
+        target="${4:-${3:-}}"
+        case "$target" in
+            niri.service) [[ " ${INIR_TEST_ACTIVE:-} " == *" niri "* ]] ;;
+            umbriel-session.target) [[ " ${INIR_TEST_ACTIVE:-} " == *" umbriel "* ]] ;;
+            *) exit 1 ;;
+        esac
+        ;;
+    *) exit 1 ;;
+esac
+SH
+chmod +x "$service_lifecycle_root/bin/systemctl"
+(
+    export PATH="$service_lifecycle_root/bin:$PATH"
+    export XDG_CONFIG_HOME="$service_lifecycle_root/xdg"
+    export INIR_TEST_AVAILABLE='niri umbriel'
+    source "$compositor_helper"
+
+    INIR_TEST_MANAGER_ENV='NIRI_SOCKET=/run/user/1000/niri.sock'
+    [[ "$(inir_detect_compositor_service)" == 'niri.service' ]]
+    INIR_TEST_MANAGER_ENV='UMBRIEL_SOCKET=/run/user/1000/umbriel.sock'
+    [[ "$(inir_detect_compositor_service)" == 'umbriel-session.target' ]]
+    INIR_TEST_MANAGER_ENV=''
+    INIR_TEST_ACTIVE='umbriel'
+    [[ "$(inir_detect_compositor_service)" == 'umbriel-session.target' ]]
+
+    unset INIR_TEST_ACTIVE
+    mkdir -p "$XDG_CONFIG_HOME/systemd/user/umbriel-session.target.wants"
+    ln -s ../inir.service "$XDG_CONFIG_HOME/systemd/user/umbriel-session.target.wants/inir.service"
+    [[ "$(inir_detect_compositor_service)" == 'umbriel-session.target' ]]
+
+    inir_write_compositor_lifecycle_dropin umbriel-session.target "$XDG_CONFIG_HOME/systemd/user"
+    grep -qx 'PartOf=umbriel-session.target' "$XDG_CONFIG_HOME/systemd/user/inir.service.d/compositor.conf"
+    grep -qx 'Requisite=umbriel-session.target' "$XDG_CONFIG_HOME/systemd/user/inir.service.d/compositor.conf"
+    grep -qx 'After=umbriel-session.target' "$XDG_CONFIG_HOME/systemd/user/inir.service.d/compositor.conf"
+) || {
+    printf 'FAIL: compositor lifecycle detection/wiring does not preserve Niri/Umbriel ownership\n' >&2
+    rm -rf "$service_lifecycle_root"
+    exit 1
+}
+rm -rf "$service_lifecycle_root"
 if grep -Fq '/tmp/.X11-unix/X' "$runtime_root/scripts/inir" \
         || grep -Fq '/tmp/.X11-unix/X' "$runtime_root/modules/common/functions/ShellExec.qml" \
         || grep -Fq 'niri.wayland-*.sock' "$runtime_root/scripts/inir"; then
@@ -416,6 +471,24 @@ if 'Ctrl+Alt+F { spawn "inir" "equalizer" "toggle"; }' not in binds:
     raise SystemExit("FAIL: fresh-install EasyEffects Equalizer binding is missing")
 if 'Ctrl+Alt+E { spawn "inir" "equalizer" "toggle"; }' in binds:
     raise SystemExit("FAIL: fresh-install Equalizer binding regressed to the old Ctrl+Alt+E chord")
+
+import tomllib
+umbriel_root = root / "defaults/umbriel"
+umbriel_config = tomllib.loads((umbriel_root / "config.toml").read_text(encoding="utf-8"))
+for include in umbriel_config.get("include", {}).get("files", []):
+    path = umbriel_root / include
+    if not path.is_file():
+        raise SystemExit(f"FAIL: Umbriel include missing: {include}")
+    tomllib.loads(path.read_text(encoding="utf-8"))
+umbriel_binds = (umbriel_root / "config.d/70-binds.toml").read_text(encoding="utf-8")
+for fragment in [
+    '"Mod+Tab" = { action = "overview-toggle", repeat = false }',
+    '"Mod+Q" = { action = "spawn:inir close-window", repeat = false }',
+    '"Ctrl+Print" = { action = "spawn:inir umbriel-screenshot screen", repeat = false }',
+    '"Alt+Print" = { action = "spawn:inir umbriel-screenshot window", repeat = false }',
+]:
+    if fragment not in umbriel_binds:
+        raise SystemExit(f"FAIL: Umbriel fresh-install bind missing: {fragment}")
 PY
 
 equalizer_helper="$runtime_root/scripts/audio/easyeffects-eq.sh"
@@ -441,6 +514,13 @@ if ! grep -Fq 'pacman -T "${_all_official[@]}"' "$arch_installer" \
 fi
 if grep -Fq 'pacman -S $installflags "${_all_official[@]}"' "$arch_installer"; then
     printf 'FAIL: Arch installer can still reinstall or downgrade satisfied dependencies\n' >&2
+    exit 1
+fi
+if ! grep -Fq 'INIR_ARCH_COMPOSITOR_TARGET' "$arch_installer" \
+        || ! grep -Fq 'REQUIRED_AUR_PACKAGES+=(umbriel-git)' "$arch_installer" \
+        || ! grep -Fq "grep -vx 'niri'" "$arch_installer" \
+        || ! grep -Fq 'defaults/umbriel' "$runtime_root/sdata/subcmd-install/3.files.sh"; then
+    printf 'FAIL: Umbriel install routing can regress to installing Niri or omit Umbriel defaults\n' >&2
     exit 1
 fi
 
@@ -1217,18 +1297,19 @@ fi
 rm -rf "$launcher_sync_root"
 
 step "application launch environment"
-# Niri owns DISPLAY/WAYLAND_DISPLAY/NIRI_SOCKET. App launches may refresh from
-# the live user-manager snapshot, but must never infer compositor sockets.
+# The compositor owns DISPLAY/WAYLAND_DISPLAY and its IPC socket. App launches may
+# refresh them from the live user-manager snapshot, but must never infer sockets.
 shell_exec="$runtime_root/modules/common/functions/ShellExec.qml"
 inir_launcher="$runtime_root/scripts/inir"
 if ! grep -Fq 'systemctl --user show-environment' "$shell_exec" \
+        || ! grep -Fq 'UMBRIEL_SOCKET:-' "$shell_exec" \
         || ! grep -Fq 'for _var in DISPLAY WAYLAND_DISPLAY NIRI_SOCKET' "$shell_exec" \
         || ! grep -Fq 'QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE' "$shell_exec" \
         || ! grep -Fq 'apply_niri_app_environment' "$inir_launcher" \
         || ! grep -Fq 'config.d/40-environment.kdl' "$inir_launcher" \
         || grep -Fq '/tmp/.X11-unix/X' "$shell_exec" \
         || grep -Fq 'valid_display()' "$shell_exec"; then
-    printf 'FAIL: application launches do not preserve Niri-owned graphical session environment\n' >&2
+    printf 'FAIL: application launches do not preserve compositor-owned graphical session environment\n' >&2
     exit 1
 fi
 
@@ -1272,7 +1353,7 @@ if ! TEST_XDG_CONFIG_HOME="$niri_env_root" TEST_FUNCTIONS="$niri_env_functions" 
 fi
 rm -rf "$niri_env_root"
 
-if ! grep -Fq 'for _qs_var in WAYLAND_DISPLAY NIRI_SOCKET DISPLAY' "$inir_launcher" \
+if ! grep -Fq 'for _qs_var in WAYLAND_DISPLAY NIRI_SOCKET UMBRIEL_SOCKET DISPLAY' "$inir_launcher" \
         || grep -Fq '/tmp/.X11-unix/X' "$inir_launcher" \
         || grep -Fq 'niri.wayland-*.sock' "$inir_launcher" \
         || grep -Fq 'systemctl --user set-environment "${vars_to_import[@]}"' "$inir_launcher"; then

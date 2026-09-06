@@ -103,9 +103,7 @@ Singleton {
             done
 
             # These are application/session policy, not Quickshell-private
-            # tuning. The iNiR launcher mirrors the effective Niri config into
-            # Quickshell before startup; only fill a missing value from the
-            # manager and never override Niri's authoritative app policy.
+            # tuning. Fill missing values from the live session manager.
             for _var in QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE \
                         ELECTRON_OZONE_PLATFORM_HINT; do
                 import_if_missing "$_var"
@@ -142,13 +140,21 @@ Singleton {
                 export PATH="$_merged_path"
             fi
 
-            # Niri owns the compositor environment. Prefer the values it
-            # published to the user manager, but preserve an inherited value
-            # for manual invocations where the manager has no session snapshot.
-            for _var in DISPLAY WAYLAND_DISPLAY NIRI_SOCKET; do
-                _value="$(manager_value "$_var")"
-                [ -n "$_value" ] && export "$_var=$_value"
-            done
+            # A nested Umbriel session inherits the host manager's Niri values.
+            # Preserve the compositor environment already carried by the shell
+            # instead of replacing it with the parent session snapshot.
+            if [ -n "\${UMBRIEL_SOCKET:-}" ]; then
+                unset NIRI_SOCKET
+                export XDG_CURRENT_DESKTOP=umbriel
+                export XDG_SESSION_DESKTOP=umbriel
+                export XDG_SESSION_TYPE=wayland
+            else
+                unset UMBRIEL_SOCKET
+                for _var in DISPLAY WAYLAND_DISPLAY NIRI_SOCKET; do
+                    _value="$(manager_value "$_var")"
+                    [ -n "$_value" ] && export "$_var=$_value"
+                done
+            fi
 
             # Recommended by xwayland-satellite for Java/AWT clients. Keep an
             # explicit user value authoritative.

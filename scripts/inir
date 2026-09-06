@@ -38,6 +38,27 @@ source_config_path_helper() {
 
 source_config_path_helper
 
+source_compositor_helper() {
+    local helper_candidates=(
+        "$script_dir/lib/compositor.sh"
+        "$launcher_root/share/quickshell/inir/scripts/lib/compositor.sh"
+        "$user_config_dir/scripts/lib/compositor.sh"
+        "$system_config_dir/scripts/lib/compositor.sh"
+        "$fallback_system_config_dir/scripts/lib/compositor.sh"
+    )
+    local helper_path
+    for helper_path in "${helper_candidates[@]}"; do
+        if [[ -f "$helper_path" ]]; then
+            source "$helper_path"
+            return
+        fi
+    done
+    echo "Unable to locate compositor helper (scripts/lib/compositor.sh)." >&2
+    exit 1
+}
+
+source_compositor_helper
+
 _ipc_registry_loaded=false
 
 source_ipc_registry() {
@@ -102,7 +123,7 @@ EOF
 
     cat <<'EOF'
 Runtime:
-  start, stop, run, restart, kill, terminal, browser, close-window, colorpicker
+  start, stop, run, restart, kill, terminal, browser, close-window, umbriel-screenshot, colorpicker
 
 Maintenance (delegates to setup):
   install, reinstall, update, doctor, status, migrate, rollback, my-changes, uninstall
@@ -1456,10 +1477,24 @@ detect_running_instance_dir() {
         local json_output
         json_output="$($qs_bin list --all --json 2>/dev/null || true)"
         if [[ -n "$json_output" && "$json_output" != "[]" ]]; then
-            running_path="$(printf '%s' "$json_output" | jq -r '
-                [.[] | (.config_path // .configPath // empty) | select(endswith("/shell.qml"))]
-                | .[0] // empty
-            ' 2>/dev/null || true)"
+            if [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+                local entry_pid entry_path
+                while IFS=$'\t' read -r entry_pid entry_path; do
+                    [[ -n "$entry_pid" && -n "$entry_path" ]] || continue
+                    if [[ -r "/proc/$entry_pid/environ" ]] \
+                            && tr '\0' '\n' < "/proc/$entry_pid/environ" \
+                                | grep -Fxq "WAYLAND_DISPLAY=$WAYLAND_DISPLAY"; then
+                        running_path="$entry_path"
+                        break
+                    fi
+                done < <(printf '%s' "$json_output" | jq -r '.[] | [(.pid // 0), (.config_path // .configPath // "")] | @tsv' 2>/dev/null)
+            fi
+            if [[ -z "$running_path" ]]; then
+                running_path="$(printf '%s' "$json_output" | jq -r '
+                    [.[] | (.config_path // .configPath // empty) | select(endswith("/shell.qml"))]
+                    | .[0] // empty
+                ' 2>/dev/null || true)"
+            fi
         fi
     fi
 
@@ -1513,10 +1548,8 @@ apply_shell_scale() {
 }
 
 wait_for_wayland_socket() {
-    # Niri is the authority for WAYLAND_DISPLAY.  Never guess another compositor
-    # socket from XDG_RUNTIME_DIR: nested compositors and gamescope can coexist.
     if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
-        echo "Error: WAYLAND_DISPLAY is missing from the Niri session environment" >&2
+        echo "Error: WAYLAND_DISPLAY is missing from the compositor session environment" >&2
         return 1
     fi
 
@@ -1534,7 +1567,7 @@ wait_for_wayland_socket() {
         (( i++ )) || true
     done
 
-    echo "Error: Niri WAYLAND_DISPLAY socket did not appear: $socket_path" >&2
+    echo "Error: compositor WAYLAND_DISPLAY socket did not appear: $socket_path" >&2
     return 1
 }
 
@@ -1593,6 +1626,8 @@ _niri_app_environment_value() {
 }
 
 apply_niri_app_environment() {
+    [[ -n "${UMBRIEL_SOCKET:-}" ]] && return 0
+
     local cfg
     cfg="$(_niri_app_environment_file)"
     [[ -n "$cfg" ]] || return 0
@@ -1742,14 +1777,13 @@ apply_qt_runtime_env() {
         true
     fi
 
-    # Import missing session values from the user manager.  Niri is the sole
-    # authority for compositor-owned variables; this only copies published state
-    # into manual/recovery invocations and never probes sockets to manufacture it.
+    # Import compositor-published session values from the user manager for
+    # manual/recovery invocations. Never probe filesystem sockets to manufacture them.
     local _qs_sys_env
     _qs_sys_env="$(_get_systemd_user_env)"
     if [[ -n "$_qs_sys_env" ]]; then
         local _qs_var _qs_val
-        for _qs_var in WAYLAND_DISPLAY NIRI_SOCKET DISPLAY \
+        for _qs_var in WAYLAND_DISPLAY NIRI_SOCKET UMBRIEL_SOCKET DISPLAY \
                        XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP DESKTOP_SESSION \
                        XCURSOR_THEME XCURSOR_SIZE \
                        LANG LC_ALL XDG_MENU_PREFIX \
@@ -1777,6 +1811,22 @@ apply_qt_runtime_env() {
             export PATH="$_qs_merged"
         fi
     fi
+
+    # Nested compositors inherit their parent's environment. Once an Umbriel
+    # socket is present, its child session is authoritative and the parent Niri
+    # socket must not leak into Quickshell or applications launched from it.
+    if [[ -n "${UMBRIEL_SOCKET:-}" ]]; then
+        unset NIRI_SOCKET
+        export XDG_CURRENT_DESKTOP=umbriel
+        export XDG_SESSION_DESKTOP=umbriel
+        export XDG_SESSION_TYPE=wayland
+    elif [[ -n "${NIRI_SOCKET:-}" ]]; then
+        unset UMBRIEL_SOCKET
+    fi
+
+    # Niri keeps its app policy in KDL; Umbriel publishes the equivalent values
+    # through the session environment imported above.
+    apply_niri_app_environment
 
     # Electron Wayland hint for the shell's startup environment and legacy
     # internal child paths. User-facing apps take the live user-manager value
@@ -1928,13 +1978,7 @@ is_inir_service_enabled() {
 }
 
 detect_compositor_service() {
-    # iNiR is a Niri shell.  niri.service is the only valid lifecycle owner;
-    # never fall back to graphical-session.target or another compositor unit.
-    if systemctl --user cat niri.service &>/dev/null; then
-        printf 'niri.service\n'
-        return 0
-    fi
-    return 1
+    inir_detect_compositor_service
 }
 
 start_inir_service_if_enabled() {
@@ -2333,7 +2377,7 @@ run_repair() {
     printf '\n== running doctor ==\n'
     run_setup_inline "$dir" doctor
 
-    if [[ -z "${WAYLAND_DISPLAY:-}" && -z "${DISPLAY:-}" && -z "${NIRI_SOCKET:-}" ]]; then
+    if [[ -z "${WAYLAND_DISPLAY:-}" && -z "${DISPLAY:-}" && -z "${NIRI_SOCKET:-}" && -z "${UMBRIEL_SOCKET:-}" ]]; then
         printf '\n== no graphical session ==\n'
         printf 'doctor finished, but restart was skipped because there is no live display.\n'
         return
@@ -2717,6 +2761,12 @@ EOF
     # link that caused inir to spawn under KDE/GNOME.
     cleanup_stale_wants_links
 
+    local lifecycle_target=""
+    lifecycle_target="$(detect_compositor_service 2>/dev/null || true)"
+    if [[ -n "$lifecycle_target" ]]; then
+        inir_write_compositor_lifecycle_dropin "$lifecycle_target" "$systemd_user_dir"
+    fi
+
     systemctl --user daemon-reload
     printf '%s\n' "$systemd_user_dir/inir.service"
 }
@@ -2755,14 +2805,16 @@ enable_inir_service() {
     target="$(detect_compositor_service 2>/dev/null)" || true
 
     if [[ -z "$target" ]]; then
-        echo "ERROR: niri.service is not available." >&2
-        echo "       Start Niri as a managed session, then re-run 'inir service enable'." >&2
+        echo "ERROR: no supported compositor session is available." >&2
+        echo "       Start Niri or Umbriel, then re-run 'inir service enable'." >&2
         return 1
     fi
 
     local wants_dir="$systemd_user_dir/${target}.wants"
 
+    cleanup_stale_wants_links
     mkdir -p "$wants_dir"
+    inir_write_compositor_lifecycle_dropin "$target" "$systemd_user_dir"
     ln -sf "$systemd_user_dir/inir.service" "$wants_dir/inir.service"
     systemctl --user daemon-reload
 
@@ -3577,8 +3629,8 @@ case "$command_name" in
             resolve_config_dir
             apply_hot_reload_policy_for_dir "$config_dir"
             check_qs_abi
-            apply_qt_runtime_env          # import Niri-owned session env if needed
-            wait_for_wayland_socket       # validate the exact Niri-owned socket
+            apply_qt_runtime_env          # import compositor-owned session env if needed
+            wait_for_wayland_socket       # validate the exact compositor-owned display
             exec "$qs_bin" -n -p "$config_dir"
         fi
 
@@ -3739,6 +3791,10 @@ case "$command_name" in
         done
         resolve_config_dir
         run_runtime_script "$config_dir" "scripts/close-window.sh"
+        ;;
+    umbriel-screenshot)
+        resolve_config_dir
+        run_runtime_script "$config_dir" "scripts/umbriel-screenshot.sh" "$@"
         ;;
     colorpicker)
         while [[ $# -gt 0 ]]; do

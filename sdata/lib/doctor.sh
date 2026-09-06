@@ -16,6 +16,11 @@ XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 XDG_BIN_HOME="${XDG_BIN_HOME:-$HOME/.local/bin}"
 
+if ! declare -F inir_detect_compositor_service >/dev/null 2>&1; then
+    _doctor_compositor_helper="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)/scripts/lib/compositor.sh"
+    [[ -f "$_doctor_compositor_helper" ]] && source "$_doctor_compositor_helper"
+fi
+
 doctor_pass() {
     tui_success "$1"
     ((doctor_passed++)) || true
@@ -32,15 +37,7 @@ doctor_fix() {
 }
 
 doctor_detect_compositor_service() {
-    if ! command -v systemctl >/dev/null 2>&1; then
-        return 1
-    fi
-
-    if systemctl --user cat niri.service &>/dev/null; then
-        printf 'niri.service'
-        return 0
-    fi
-    return 1
+    inir_detect_compositor_service
 }
 
 ###############################################################################
@@ -55,9 +52,11 @@ check_dependencies() {
     # These are distro-agnostic - we check for the command, not the package
     # ALL dependencies are required — optional features still need their tools
     # installed to avoid user confusion when things silently don't work.
+    local compositor_dep="niri:Niri"
+    [[ "$(doctor_detect_compositor_service 2>/dev/null || true)" == "umbriel-session.target" ]] && compositor_dep="umbriel:Umbriel"
     local cmds=(
         "qs:Quickshell"
-        "niri:Niri"
+        "$compositor_dep"
         "nmcli:NetworkManager"
         "wpctl:WirePlumber"
         "jq:jq"
@@ -826,11 +825,19 @@ _try_install_font_package() {
     return 1
 }
 
-check_niri_running() {
-    if [[ -n "$NIRI_SOCKET" && -S "$NIRI_SOCKET" ]]; then
+check_compositor_running() {
+    local target
+    target="$(doctor_detect_compositor_service 2>/dev/null || true)"
+    if [[ "$target" == "umbriel-session.target" ]]; then
+        if [[ -n "${UMBRIEL_SOCKET:-}" && -S "$UMBRIEL_SOCKET" ]]; then
+            doctor_pass "Umbriel compositor running"
+        else
+            doctor_fail "Umbriel not detected (run inside Umbriel session)"
+        fi
+    elif [[ -n "${NIRI_SOCKET:-}" && -S "$NIRI_SOCKET" ]]; then
         doctor_pass "Niri compositor running"
     else
-        doctor_fail "Niri not detected (run inside Niri session)"
+        doctor_fail "Supported compositor not detected"
     fi
 }
 
@@ -1582,18 +1589,29 @@ check_qt_theming() {
             *) echo -e "    ${STY_FAINT}Install plasma-integration using your package manager${STY_RST}" ;;
         esac
     else
-        # Also check niri config isn't stuck on qt6ct when kde plugin is available
-        local niri_cfg="${XDG_CONFIG_HOME}/niri/config.kdl"
-        local modular_env_cfg="${XDG_CONFIG_HOME}/niri/config.d/40-environment.kdl"
-        if [[ -f "$modular_env_cfg" ]] && { [[ ! -f "$niri_cfg" ]] \
-                || grep -Eq '^[[:space:]]*include[[:space:]]+"config\.d/40-environment\.kdl"[[:space:]]*$' "$niri_cfg"; }; then
-            niri_cfg="$modular_env_cfg"
-        fi
-        if [[ -f "$niri_cfg" ]] && grep -q 'QT_QPA_PLATFORMTHEME "qt6ct"' "$niri_cfg"; then
-            sed -i 's/QT_QPA_PLATFORMTHEME "qt6ct"/QT_QPA_PLATFORMTHEME "kde"/' "$niri_cfg"
-            doctor_fix "Switched QT_QPA_PLATFORMTHEME from qt6ct to kde"
+        local compositor_target env_cfg
+        compositor_target="$(doctor_detect_compositor_service 2>/dev/null || true)"
+        if [[ "$compositor_target" == "umbriel-session.target" ]]; then
+            env_cfg="${XDG_CONFIG_HOME}/umbriel/config.d/40-environment.toml"
+            if [[ -f "$env_cfg" ]] && grep -q 'QT_QPA_PLATFORMTHEME = "qt6ct"' "$env_cfg"; then
+                sed -i 's/QT_QPA_PLATFORMTHEME = "qt6ct"/QT_QPA_PLATFORMTHEME = "kde"/' "$env_cfg"
+                doctor_fix "Switched QT_QPA_PLATFORMTHEME from qt6ct to kde"
+            else
+                doctor_pass "Qt theming OK (plasma-integration + kde platform)"
+            fi
         else
-            doctor_pass "Qt theming OK (plasma-integration + kde platform)"
+            env_cfg="${XDG_CONFIG_HOME}/niri/config.kdl"
+            local modular_env_cfg="${XDG_CONFIG_HOME}/niri/config.d/40-environment.kdl"
+            if [[ -f "$modular_env_cfg" ]] && { [[ ! -f "$env_cfg" ]] \
+                    || grep -Eq '^[[:space:]]*include[[:space:]]+"config\.d/40-environment\.kdl"[[:space:]]*$' "$env_cfg"; }; then
+                env_cfg="$modular_env_cfg"
+            fi
+            if [[ -f "$env_cfg" ]] && grep -q 'QT_QPA_PLATFORMTHEME "qt6ct"' "$env_cfg"; then
+                sed -i 's/QT_QPA_PLATFORMTHEME "qt6ct"/QT_QPA_PLATFORMTHEME "kde"/' "$env_cfg"
+                doctor_fix "Switched QT_QPA_PLATFORMTHEME from qt6ct to kde"
+            else
+                doctor_pass "Qt theming OK (plasma-integration + kde platform)"
+            fi
         fi
     fi
 
@@ -1649,15 +1667,28 @@ check_qt_theming() {
     fi
 }
 
-check_niri_config() {
-    local niri_cfg="${XDG_CONFIG_HOME}/niri/config.kdl"
-    [[ ! -f "$niri_cfg" ]] && { doctor_pass "Niri config (not installed)"; return 0; }
-    
-    if command -v niri &>/dev/null; then
-        local output
-        # Current niri releases are silent on successful validation. The exit
-        # status is the contract; grepping for the word "valid" turns every
-        # silent success into a false failure.
+check_compositor_config() {
+    local target output cfg
+    target="$(doctor_detect_compositor_service 2>/dev/null || true)"
+    if [[ "$target" == "umbriel-session.target" ]]; then
+        cfg="${XDG_CONFIG_HOME}/umbriel/config.toml"
+        [[ ! -f "$cfg" ]] && { doctor_pass "Umbriel config (not installed)"; return 0; }
+        if command -v umbriel >/dev/null 2>&1; then
+            if output=$(umbriel validate -c "$cfg" 2>&1); then
+                doctor_pass "Umbriel config valid"
+            else
+                doctor_fail "Umbriel config has errors"
+                echo -e "    ${STY_FAINT}$(echo "$output" | head -2)${STY_RST}"
+            fi
+        else
+            doctor_pass "Umbriel config (umbriel not installed, skipping validation)"
+        fi
+        return 0
+    fi
+
+    cfg="${XDG_CONFIG_HOME}/niri/config.kdl"
+    [[ ! -f "$cfg" ]] && { doctor_pass "Niri config (not installed)"; return 0; }
+    if command -v niri >/dev/null 2>&1; then
         if output=$(niri validate 2>&1); then
             doctor_pass "Niri config valid"
         else
@@ -1751,7 +1782,7 @@ run_doctor_with_fixes() {
     _doctor_run_step 9  $total_steps "Checking version tracking"     check_version_tracking
     _doctor_run_step 10 $total_steps "Checking file manifest"        check_manifest
     _doctor_run_step 11 $total_steps "Checking user service"         check_service_unit_health
-    _doctor_run_step 12 $total_steps "Checking Niri compositor"      check_niri_running
+    _doctor_run_step 12 $total_steps "Checking compositor"           check_compositor_running
     _doctor_run_step 13 $total_steps "Checking Python packages"      check_python_packages
     _doctor_run_step 14 $total_steps "Checking stale local quickshell" check_stale_local_quickshell
 
@@ -1830,7 +1861,7 @@ run_doctor_with_fixes() {
     _doctor_run_step 20 $total_steps "Checking conflicting shells"   check_conflicting_shells
     _doctor_run_step 21 $total_steps "Checking wallpaper health"     check_wallpaper_health
     _doctor_run_step 22 $total_steps "Checking environment variables" check_environment_vars
-    _doctor_run_step 23 $total_steps "Checking Niri config"          check_niri_config
+    _doctor_run_step 23 $total_steps "Checking compositor config"    check_compositor_config
 
     echo ""
     tui_divider

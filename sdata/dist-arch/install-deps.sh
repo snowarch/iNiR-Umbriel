@@ -21,6 +21,7 @@ if [[ -n "${ONLY_MISSING_DEPS:-}" ]]; then
   declare -A cmd_to_pkg=(
     [qs]="quickshell"
     [niri]="niri"
+    [umbriel]="umbriel-git"
     [nmcli]="networkmanager"
     [wpctl]="wireplumber"
     [jq]="jq"
@@ -137,6 +138,7 @@ fi
 #####################################################################################
 tui_info "Resolving Arch package plan..."
 
+INIR_ARCH_COMPOSITOR_TARGET="$(inir_detect_compositor_service 2>/dev/null || true)"
 PKGBUILD_PACKAGES=()
 collect_pkgbuild_deps() {
   local pkgbuild_dir="$1"
@@ -167,6 +169,10 @@ for pkgdir in ./sdata/dist-arch/inir-*/; do
   esac
   collect_pkgbuild_deps "$pkgdir"
 done
+if [[ "$INIR_ARCH_COMPOSITOR_TARGET" == "umbriel-session.target" ]]; then
+  mapfile -t PKGBUILD_PACKAGES < <(printf '%s
+' "${PKGBUILD_PACKAGES[@]}" | grep -vx 'niri' || true)
+fi
 
 #####################################################################################
 # Pre-install: resolve quickshell package conflicts
@@ -265,7 +271,6 @@ OFFICIAL_PACKAGES=(
   kdialog
   
   # Already in PKGBUILDs but ensure they're installed
-  niri
   cliphist
   gum
   starship
@@ -325,6 +330,9 @@ fi
 if $INSTALL_TOOLKIT; then
   OFFICIAL_PACKAGES+=(uv)
 fi
+if [[ "$INIR_ARCH_COMPOSITOR_TARGET" != "umbriel-session.target" ]]; then
+  OFFICIAL_PACKAGES+=(niri)
+fi
 
 installflags="--needed"
 $ask || installflags="$installflags --noconfirm"
@@ -381,6 +389,9 @@ tui_info "Installing AUR packages..."
 
 REQUIRED_AUR_PACKAGES=(
 )
+if [[ "$INIR_ARCH_COMPOSITOR_TARGET" == "umbriel-session.target" ]]; then
+  REQUIRED_AUR_PACKAGES+=(umbriel-git)
+fi
 
 AUR_PACKAGES=(
   "${REPO_FALLBACK_PACKAGES[@]}"
