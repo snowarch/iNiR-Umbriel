@@ -35,7 +35,21 @@ VERSION_FILE_RUNTIME_SYSTEM_LOCAL="${RUNTIME_DIR_SYSTEM_LOCAL}/version.json"
 VERSION_FILE_RUNTIME_SYSTEM="${RUNTIME_DIR_SYSTEM}/version.json"
 VERSION_FILE_REPO="${REPO_ROOT}/VERSION"
 CHANGELOG_FILE="${REPO_ROOT}/CHANGELOG.md"
-GITHUB_REPO="snowarch/inir"
+_inir_origin_github_repo() {
+    local url
+    url="$(git -C "${REPO_ROOT:-.}" remote get-url origin 2>/dev/null || true)"
+    url="${url%.git}"
+    case "$url" in
+        git@github.com:*) printf '%s\n' "${url#git@github.com:}" ;;
+        ssh://git@github.com/*) printf '%s\n' "${url#ssh://git@github.com/}" ;;
+        https://github.com/*) printf '%s\n' "${url#https://github.com/}" ;;
+        http://github.com/*) printf '%s\n' "${url#http://github.com/}" ;;
+        *) return 1 ;;
+    esac
+}
+
+GITHUB_REPO="${INIR_GITHUB_REPO:-$(_inir_origin_github_repo 2>/dev/null || true)}"
+[[ -n "$GITHUB_REPO" ]] || GITHUB_REPO="snowarch/inir"
 GITHUB_API="https://api.github.com/repos/${GITHUB_REPO}"
 
 # Cache for remote version checks (avoid hammering GitHub)

@@ -39,7 +39,7 @@ resolve_bootstrap_repo_root() {
 
     stored_repo="${stored_repo/#\~/$HOME}"
 
-    if [[ -n "$stored_repo" && -d "${stored_repo}/.git" && -f "${stored_repo}/setup" && -f "${stored_repo}/shell.qml" ]]; then
+    if [[ -n "$stored_repo" && -e "${stored_repo}/.git" && -f "${stored_repo}/setup" && -f "${stored_repo}/shell.qml" ]]; then
         printf '%s' "$stored_repo"
         return
     fi
@@ -326,7 +326,7 @@ ensure_user_inir_service_enabled() {
     fi
 
     local target=""
-    target="$(inir_detect_compositor_service 2>/dev/null || true)"
+    target="$(inir_install_compositor_service 2>/dev/null || true)"
     [[ -n "$target" ]] || return 1
 
     local user_service_dir="${XDG_CONFIG_HOME}/systemd/user"
@@ -560,12 +560,14 @@ show_help() {
     tui_list_item "--local                Sync local repo to install (skip git pull)"
     tui_list_item "--realign              Safely realign an old published checkout after rewritten remote history (update only)"
     tui_list_item "--simulate             Walk the update flow visually without touching files (update only)"
+    tui_list_item "--compositor <auto|niri|umbriel>  Select install target; interactive install asks when auto"
     tui_list_item "--set-default-shell    Set Fish as default shell (uses chsh)"
     tui_list_item "-h, --help             Show this help"
     tui_section_end
 
     tui_section_start "Good defaults"
-    tui_list_item "./setup install      Install iNiR once"
+    tui_list_item "./setup install      Detect installed compositors and choose interactively"
+    tui_list_item "./setup install --compositor umbriel  Prepare Umbriel explicitly"
     tui_list_item "./setup update       Pull, sync, and restart"
     tui_list_item "./setup doctor       Diagnose weird runtime breakage"
     tui_list_item "./setup status       See what is installed and what is drifting"
@@ -1706,7 +1708,7 @@ show_install_completion() {
     gpu="${DETECTED_GPU:-unknown}"
     ram="${DETECTED_RAM_GIB:-?} GiB"
     compositor="${DETECTED_DE:-${XDG_CURRENT_DESKTOP:-not detected}}"
-    compositor_target="$(inir_detect_compositor_service 2>/dev/null || true)"
+    compositor_target="$(inir_install_compositor_service 2>/dev/null || true)"
     login_compositor="Niri"
     [[ "$compositor_target" == "umbriel-session.target" ]] && login_compositor="Umbriel"
 
@@ -1750,8 +1752,71 @@ show_update_completion() {
 ###############################################################################
 # Install
 ###############################################################################
+_install_compositor_state() {
+    local name="$1" installed="no" active="no"
+    case "$name" in
+        niri)
+            command -v niri >/dev/null 2>&1 && installed="yes"
+            [[ -n "${NIRI_SOCKET:-}" ]] || systemctl --user is-active --quiet niri.service 2>/dev/null && active="yes"
+            ;;
+        umbriel)
+            command -v umbriel >/dev/null 2>&1 && installed="yes"
+            [[ -n "${UMBRIEL_SOCKET:-}" ]] || systemctl --user is-active --quiet umbriel-session.target 2>/dev/null && active="yes"
+            ;;
+    esac
+    if [[ "$active" == "yes" ]]; then printf 'active';
+    elif [[ "$installed" == "yes" ]]; then printf 'installed';
+    else printf 'not installed'; fi
+}
+
+select_install_compositor() {
+    local requested="${INIR_INSTALL_COMPOSITOR:-auto}"
+    case "$requested" in niri|umbriel) return 0 ;; auto|'') ;; *) return 1 ;; esac
+
+    local niri_state umbriel_state active_target choice
+    niri_state="$(_install_compositor_state niri)"
+    umbriel_state="$(_install_compositor_state umbriel)"
+    active_target="$(inir_detect_compositor_service 2>/dev/null || true)"
+
+    if $ask; then
+        tui_title "Choose compositor"
+        tui_status_line "Niri" "$niri_state" "$([[ "$niri_state" == active ]] && echo ok || echo '')"
+        tui_status_line "Umbriel" "$umbriel_state" "$([[ "$umbriel_state" == active ]] && echo ok || echo '')"
+        echo ""
+        choice=$(tui_choose "Which compositor should this installation prepare?" \
+            "Umbriel [$umbriel_state]" \
+            "Niri [$niri_state]")
+        case "$choice" in
+            Umbriel*) INIR_INSTALL_COMPOSITOR=umbriel ;;
+            Niri*) INIR_INSTALL_COMPOSITOR=niri ;;
+            *) return 1 ;;
+        esac
+        export INIR_INSTALL_COMPOSITOR
+        tui_info "Install target: ${INIR_INSTALL_COMPOSITOR^}"
+        echo ""
+        return 0
+    fi
+
+    case "$active_target" in
+        umbriel-session.target) INIR_INSTALL_COMPOSITOR=umbriel ;;
+        niri.service) INIR_INSTALL_COMPOSITOR=niri ;;
+        *)
+            if [[ "$umbriel_state" == "installed" && "$niri_state" == "not installed" ]]; then
+                INIR_INSTALL_COMPOSITOR=umbriel
+            elif [[ "$niri_state" == "installed" && "$umbriel_state" == "not installed" ]]; then
+                INIR_INSTALL_COMPOSITOR=niri
+            else
+                echo "ERROR: cannot choose compositor non-interactively. Use --compositor niri or --compositor umbriel." >&2
+                return 1
+            fi
+            ;;
+    esac
+    export INIR_INSTALL_COMPOSITOR
+}
+
 run_install() {
     detect_distro
+    select_install_compositor || return 1
 
     # Greeting & system info
     source ./sdata/subcmd-install/0.greeting.sh

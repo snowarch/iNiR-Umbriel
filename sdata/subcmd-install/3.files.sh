@@ -249,7 +249,7 @@ esac
 #####################################################################################
 tui_info "Installing config files..."
 
-INSTALL_COMPOSITOR_TARGET="$(inir_detect_compositor_service 2>/dev/null || true)"
+INSTALL_COMPOSITOR_TARGET="$(inir_install_compositor_service 2>/dev/null || true)"
 
 if [[ "$INSTALL_COMPOSITOR_TARGET" == "umbriel-session.target" ]]; then
   UMBRIEL_CONFIG="${XDG_CONFIG_HOME}/umbriel/config.toml"

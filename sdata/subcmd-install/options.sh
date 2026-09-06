@@ -4,7 +4,7 @@
 # shellcheck shell=bash
 
 showhelp_install(){
-printf "[$0]: Install iNiR — Quickshell config for Niri.
+printf "[$0]: Install iNiR — Quickshell shell for Niri or Umbriel.
 
 Syntax:
   $0 install [OPTIONS]...
@@ -18,6 +18,7 @@ Options:
   --skip-setups       Skip service/permission setup
   --skip-files        Skip config file installation
   --skip-quickshell   Skip Quickshell config sync
+  --compositor <auto|niri|umbriel>  Select compositor to prepare (default: auto)
   --skip-niri         Skip Niri config installation
   --skip-backup       Skip backup of existing configs
   --no-audio          Skip audio dependencies
@@ -31,6 +32,7 @@ Examples:
   $0 install              Interactive installation
   $0 install -y           Non-interactive installation
   $0 install -y -q        Non-interactive, quiet (for CI/scripts)
+  $0 install --compositor umbriel  Prepare an Umbriel login even from another session
   $0 install --skip-deps  Skip dependencies (if already installed)
   $0 install --no-audio   Skip audio stack (if you use something else)
 "
@@ -46,6 +48,8 @@ SKIP_ALLSETUPS=${SKIP_ALLSETUPS:-false}
 SKIP_ALLFILES=${SKIP_ALLFILES:-false}
 SKIP_QUICKSHELL=false
 SKIP_NIRI=false
+INIR_INSTALL_COMPOSITOR=${INIR_INSTALL_COMPOSITOR:-auto}
+export INIR_INSTALL_COMPOSITOR
 SKIP_BACKUP=false
 SKIP_SYSUPDATE=false
 
@@ -90,6 +94,14 @@ while [[ $# -gt 0 ]]; do
     --skip-quickshell)
       SKIP_QUICKSHELL=true
       shift
+      ;;
+    --compositor)
+      [[ $# -ge 2 ]] || { echo -e "${STY_RED}--compositor requires auto, niri, or umbriel${STY_RST}"; exit 1; }
+      case "$2" in
+        auto|niri|umbriel) INIR_INSTALL_COMPOSITOR="$2"; export INIR_INSTALL_COMPOSITOR ;;
+        *) echo -e "${STY_RED}Invalid compositor: $2 (expected auto, niri, or umbriel)${STY_RST}"; exit 1 ;;
+      esac
+      shift 2
       ;;
     --skip-niri)
       SKIP_NIRI=true

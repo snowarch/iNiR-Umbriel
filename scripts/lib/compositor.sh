@@ -62,6 +62,15 @@ inir_detect_compositor_service() {
     return 1
 }
 
+inir_install_compositor_service() {
+    case "${INIR_INSTALL_COMPOSITOR:-auto}" in
+        umbriel) printf 'umbriel-session.target\n'; return 0 ;;
+        niri) printf 'niri.service\n'; return 0 ;;
+        auto|'') inir_detect_compositor_service ;;
+        *) return 1 ;;
+    esac
+}
+
 inir_write_compositor_lifecycle_dropin() {
     local target="$1"
     local user_dir="${2:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}"

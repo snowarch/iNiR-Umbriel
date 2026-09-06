@@ -46,9 +46,12 @@ create_snapshot() {
         cp "${INIR_CONFIG_DIR}/config.json" "${snapshot_dir}/"
     fi
     
-    # Copy niri config
+    # Copy compositor configs. Umbriel is modular, so preserve the whole tree.
     if [[ -f "${XDG_CONFIG_HOME}/niri/config.kdl" ]]; then
         cp "${XDG_CONFIG_HOME}/niri/config.kdl" "${snapshot_dir}/niri-config.kdl"
+    fi
+    if [[ -d "${XDG_CONFIG_HOME}/umbriel" ]]; then
+        rsync -a "${XDG_CONFIG_HOME}/umbriel/" "${snapshot_dir}/umbriel/"
     fi
     
     # Copy migrations state
@@ -173,10 +176,16 @@ restore_snapshot() {
         cp "${snapshot_dir}/config.json" "${INIR_CONFIG_DIR}/"
     fi
     
-    # Restore niri config
+    # Restore compositor configs.
     if [[ -f "${snapshot_dir}/niri-config.kdl" ]]; then
         log_info "Restoring niri config..."
+        mkdir -p "${XDG_CONFIG_HOME}/niri"
         cp "${snapshot_dir}/niri-config.kdl" "${XDG_CONFIG_HOME}/niri/config.kdl"
+    fi
+    if [[ -d "${snapshot_dir}/umbriel" ]]; then
+        log_info "Restoring Umbriel config..."
+        mkdir -p "${XDG_CONFIG_HOME}/umbriel"
+        rsync -a --delete "${snapshot_dir}/umbriel/" "${XDG_CONFIG_HOME}/umbriel/"
     fi
     
     # Restore migrations state
@@ -217,7 +226,7 @@ restore_snapshot() {
         tui_success "Snapshot restored and shell restarted"
     else
         tui_warn "Not in graphical session - shell restart skipped"
-        tui_info "Run: inir start (in your Niri session)"
+        tui_info "Run: inir start (inside your Niri or Umbriel session)"
         tui_success "Snapshot restored"
     fi
 }

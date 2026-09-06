@@ -138,7 +138,7 @@ fi
 #####################################################################################
 tui_info "Resolving Arch package plan..."
 
-INIR_ARCH_COMPOSITOR_TARGET="$(inir_detect_compositor_service 2>/dev/null || true)"
+INIR_ARCH_COMPOSITOR_TARGET="$(inir_install_compositor_service 2>/dev/null || true)"
 PKGBUILD_PACKAGES=()
 collect_pkgbuild_deps() {
   local pkgbuild_dir="$1"

@@ -21,7 +21,9 @@ detect_system() {
     DETECTED_SHELL=$(basename "${SHELL:-unknown}")
     
     # DE/WM detection
-    if [[ -n "$NIRI_SOCKET" ]]; then
+    if [[ -n "$UMBRIEL_SOCKET" ]]; then
+        DETECTED_DE="Umbriel"
+    elif [[ -n "$NIRI_SOCKET" ]]; then
         DETECTED_DE="Niri"
     elif [[ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]]; then
         DETECTED_DE="Hyprland"
@@ -173,7 +175,7 @@ tui_title "Installation Plan"
 
 install_plan=$(cat <<EOF
 ${ICON_ARROW} Install the runtime packages for ${DETECTED_DISTRO_ID} with ${DETECTED_PACKAGE_MANAGER}
-${ICON_ARROW} Wire services, permissions and the Niri session
+${ICON_ARROW} Prepare ${INIR_INSTALL_COMPOSITOR^}, services and session lifecycle
 ${ICON_ARROW} Install shell files and back up anything we replace
 ${ICON_ARROW} Generate the first Material palette, wallpaper and terminal theme
 ${ICON_ARROW} Save install state so Doctor, updates and rollback know what changed
