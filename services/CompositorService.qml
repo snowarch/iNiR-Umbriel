@@ -65,8 +65,17 @@ Singleton {
         : root.isNiri ? NiriService.mruWindowIds : []
     readonly property bool inOverview: root.isUmbriel ? UmbrielService.inOverview
         : root.isNiri ? NiriService.inOverview : false
+    readonly property var keyboardLayoutNames: root.isUmbriel ? UmbrielService.keyboardLayoutNames
+        : root.isNiri ? NiriService.keyboardLayoutNames : []
+    readonly property int currentKeyboardLayoutIndex: root.isUmbriel ? UmbrielService.currentKeyboardLayoutIndex
+        : root.isNiri ? NiriService.currentKeyboardLayoutIndex : 0
+    readonly property bool hasMultipleKeyboardLayouts: root.keyboardLayoutNames.length > 1
+    readonly property string currentKeyboardLayoutName: root.currentKeyboardLayoutIndex >= 0
+        && root.currentKeyboardLayoutIndex < root.keyboardLayoutNames.length
+        ? root.keyboardLayoutNames[root.currentKeyboardLayoutIndex] : ""
     readonly property bool actionReady: root.isUmbriel ? UmbrielService.available
         : root.isNiri ? NiriService.actionReady : false
+    readonly property bool hasNativeScratchpad: root.isUmbriel && UmbrielScratchpad.actionReady
 
     Timer {
         id: refreshTimer
@@ -183,6 +192,33 @@ Singleton {
     }
     Component.onCompleted: {
         detectCompositor()
+    }
+
+    function switchKeyboardLayout(): bool {
+        if (root.isUmbriel)
+            return UmbrielService.sendAction("keyboard-layout-next")
+        if (root.isNiri) {
+            NiriService.switchLayout()
+            return true
+        }
+        return false
+    }
+
+    function switchKeyboardLayoutPrevious(): bool {
+        if (root.isUmbriel) {
+            const count = root.keyboardLayoutNames.length
+            if (count <= 1)
+                return false
+            let ok = true
+            for (let i = 1; i < count; i++)
+                ok = UmbrielService.sendAction("keyboard-layout-next") && ok
+            return ok
+        }
+        if (root.isNiri) {
+            NiriService.switchLayoutPrevious()
+            return true
+        }
+        return false
     }
 
     function computeSortedToplevels() {
@@ -610,6 +646,19 @@ Singleton {
         if (root.isNiri)
             return NiriService.focusWorkspaceDown()
         return false
+    }
+
+
+    function moveFocusedToScratchpad() {
+        return root.isUmbriel ? UmbrielScratchpad.moveWindow() : false
+    }
+
+    function toggleScratchpad(outputName = "") {
+        return root.isUmbriel ? UmbrielScratchpad.toggle(outputName) : false
+    }
+
+    function restoreScratchpadWindow(windowId) {
+        return root.isUmbriel ? UmbrielScratchpad.restoreWindow(windowId) : false
     }
 
     function powerOffMonitors() {

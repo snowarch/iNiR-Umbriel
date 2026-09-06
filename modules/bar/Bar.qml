@@ -287,7 +287,8 @@ Scope {
 
                 // Shaped compositor blur; Niri applies the request only inside the
                 // actual bar content rather than across the whole layer surface.
-                BackgroundEffect.blurRegion: Region {
+                Region {
+                    id: compositorBlurRegion
                     Region {
                         item: barContent.nativeBlurActive && !barContent.isIslands
                             ? barContent.backgroundItem : emptyMask
@@ -317,6 +318,14 @@ Scope {
                         item: barContent.nativeBlurActive && barContent.isIslands
                             ? barContent.nativeBlurRightIsland : emptyMask
                         radius: barContent.nativeBlurRightIsland?.radius ?? 0
+                    }
+                }
+                Loader {
+                    active: CompositorService.isNiri
+                    sourceComponent: Binding {
+                        target: barRoot
+                        property: "BackgroundEffect.blurRegion"
+                        value: compositorBlurRegion
                     }
                 }
 

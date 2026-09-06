@@ -60,8 +60,17 @@ Scope {
                 implicitHeight: content.implicitHeight
                 implicitWidth: content.implicitWidth
 
-                BackgroundEffect.blurRegion: Region {
+                Region {
+                    id: compositorBlurRegion
                     item: content.nativeBlurActive ? content : null
+                }
+                Loader {
+                    active: CompositorService.isNiri
+                    sourceComponent: Binding {
+                        target: barRoot
+                        property: "BackgroundEffect.blurRegion"
+                        value: compositorBlurRegion
+                    }
                 }
 
                 WaffleBarContent {

@@ -1278,19 +1278,19 @@ Singleton {
         target: "keyboard"
 
         function switchLayout(): void {
-            NiriService.switchLayout()
+            CompositorService.switchKeyboardLayout()
         }
 
         function switchLayoutPrevious(): void {
-            NiriService.switchLayoutPrevious()
+            CompositorService.switchKeyboardLayoutPrevious()
         }
 
         function getCurrentLayout(): string {
-            return NiriService.getCurrentKeyboardLayoutName()
+            return CompositorService.currentKeyboardLayoutName
         }
 
         function getLayouts(): string {
-            return JSON.stringify(NiriService.keyboardLayoutNames)
+            return JSON.stringify(CompositorService.keyboardLayoutNames)
         }
     }
 

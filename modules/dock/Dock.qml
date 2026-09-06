@@ -178,9 +178,18 @@ Scope {
                 readonly property Item nativeBlurItem: root.isMacosStyle ? macBackground
                     : root.isIslandStyle ? dockIslandBackground : dockVisualBackground
 
-                BackgroundEffect.blurRegion: Region {
+                Region {
+                    id: compositorBlurRegion
                     item: dockRoot.nativeBlurActive ? dockRoot.nativeBlurItem : null
                     radius: dockRoot.nativeBlurItem?.radius ?? 0
+                }
+                Loader {
+                    active: CompositorService.isNiri
+                    sourceComponent: Binding {
+                        target: dockRoot
+                        property: "BackgroundEffect.blurRegion"
+                        value: compositorBlurRegion
+                    }
                 }
 
                 mask: Region {

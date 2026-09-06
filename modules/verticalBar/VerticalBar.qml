@@ -92,9 +92,18 @@ Scope {
                 }
                 color: "transparent"
 
-                BackgroundEffect.blurRegion: Region {
+                Region {
+                    id: compositorBlurRegion
                     item: barContent.nativeBlurActive ? barContent.backgroundItem : emptyMask
                     radius: barContent.backgroundItem.radius
+                }
+                Loader {
+                    active: CompositorService.isNiri
+                    sourceComponent: Binding {
+                        target: barRoot
+                        property: "BackgroundEffect.blurRegion"
+                        value: compositorBlurRegion
+                    }
                 }
 
                 anchors {

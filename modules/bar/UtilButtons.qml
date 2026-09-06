@@ -169,15 +169,14 @@ Item {
             }
         }
 
-        // Keyboard layout switch (Niri only)
+        // Keyboard layout switch
         Loader {
             active: (Config.options?.bar?.utilButtons?.showKeyboardLayoutSwitch ?? false)
-                    && CompositorService.isNiri
-                    && NiriService.hasMultipleKeyboardLayouts
+                    && CompositorService.hasMultipleKeyboardLayouts
             visible: active
             sourceComponent: CircleUtilButton {
                 Layout.alignment: Qt.AlignVCenter
-                onClicked: NiriService.switchLayout()
+                onClicked: CompositorService.switchKeyboardLayout()
                 Item {
                     anchors.fill: parent
                     MaterialSymbol {
