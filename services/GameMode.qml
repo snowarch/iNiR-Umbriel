@@ -142,6 +142,8 @@ Singleton {
     // accounts for sub-pixel rounding differences.
     function isWindowFullscreen(window) {
         if (!window) return false
+        if (CompositorService.isUmbriel)
+            return window.fullscreen === true
         if (!CompositorService.isNiri) return false
 
         // If niri ever adds is_fullscreen back, prefer it
@@ -174,6 +176,16 @@ Singleton {
     // directly never fires on current niri (see above) — it silently reports
     // "no fullscreen" forever.
     function hasFullscreenOnOutput(outputName: string): bool {
+        if (CompositorService.isUmbriel) {
+            const windows = CompositorService.windows
+            if (!Array.isArray(windows)) return false
+            for (const window of windows) {
+                if (window.fullscreen !== true) continue
+                if (outputName.length > 0 && window.output !== outputName) continue
+                return true
+            }
+            return false
+        }
         if (!CompositorService.isNiri) return false
         const windows = NiriService.windows
         if (!Array.isArray(windows)) return false
@@ -199,6 +211,8 @@ Singleton {
 
     // Check if ANY window across all workspaces is fullscreen
     function checkAnyFullscreenWindow(): bool {
+        if (CompositorService.isUmbriel)
+            return (CompositorService.windows ?? []).some(window => window.fullscreen === true)
         if (!CompositorService.isNiri) return false
         const windows = NiriService.windows
         if (!windows || !Array.isArray(windows)) return false
@@ -222,6 +236,13 @@ Singleton {
     }
 
     function _doCheckFullscreen() {
+        if (CompositorService.isUmbriel) {
+            const focusedWindow = CompositorService.activeWindow
+            const isFullscreen = root.isWindowFullscreen(focusedWindow) || root.hasVisibleFullscreenWindow
+            _focusedIsFullscreen = isFullscreen
+            _autoActive = root.autoDetect && isFullscreen
+            return
+        }
         if (!CompositorService.isNiri) {
             _autoActive = false
             _focusedIsFullscreen = false
@@ -292,6 +313,19 @@ Singleton {
 
     // React to window changes
     Connections {
+        target: CompositorService
+        enabled: root._initialized
+
+        function onActiveWindowChanged() {
+            if (CompositorService.isUmbriel) root.checkFullscreen()
+        }
+
+        function onWindowsChanged() {
+            if (CompositorService.isUmbriel) root.checkFullscreen()
+        }
+    }
+
+    Connections {
         target: NiriService
         enabled: CompositorService.isNiri && root._initialized
 
@@ -311,7 +345,7 @@ Singleton {
     Timer {
         id: fallbackTimer
         interval: root.checkInterval
-        running: root.autoDetect && CompositorService.isNiri && root._initialized
+        running: root.autoDetect && (CompositorService.isNiri || CompositorService.isUmbriel) && root._initialized
         repeat: true
         onTriggered: {
             if (!checkDebounce.running) {

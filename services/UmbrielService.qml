@@ -27,6 +27,7 @@ Singleton {
     property bool inOverview: false
     property var keyboardLayoutNames: []
     property int currentKeyboardLayoutIndex: 0
+    property var surfaceStates: ({})
     readonly property var currentOutputWorkspaces: workspaces.filter(workspace => workspace.output === currentOutput)
 
     signal windowOrderChanged()
@@ -48,6 +49,52 @@ Singleton {
         parser: SplitParser {
             onRead: line => root.handleEvent(line)
         }
+    }
+
+    Component {
+        id: stateQuerySocketComponent
+
+        Socket {
+            id: stateQuerySocket
+            required property string payload
+            property bool sent: false
+
+            path: root.socketPath
+            connected: true
+
+            onConnectionStateChanged: {
+                if (connected && !sent) {
+                    sent = true
+                    write(payload + "\n")
+                    flush()
+                } else if (!connected && sent) {
+                    Qt.callLater(() => stateQuerySocket.destroy())
+                }
+            }
+
+            parser: SplitParser {
+                onRead: line => {
+                    try {
+                        const reply = JSON.parse(line)
+                        if (reply?.ok)
+                            root.setSurfaceState(reply.ok)
+                        else if (reply?.err)
+                            console.warn("UmbrielService:", reply.err)
+                    } catch (e) {
+                        console.warn("UmbrielService: invalid state reply:", line)
+                    }
+                    stateQuerySocket.connected = false
+                }
+            }
+        }
+    }
+
+    Timer {
+        interval: 750
+        running: CompositorService.isUmbriel && root.available && root.windows.length > 0
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: root.querySurfaceState()
     }
 
     Component {
@@ -123,6 +170,10 @@ Singleton {
             minimized: false,
             urgent: window.urgent === true,
             xwayland: window.xwayland === true,
+            fullscreen: root.surfaceStates[String(window.id ?? "")]?.fullscreen === true,
+            output: String(root.surfaceStates[String(window.id ?? "")]?.output ?? ""),
+            tearingEligible: root.surfaceStates[String(window.id ?? "")]?.eligible === true,
+            tearingHint: String(root.surfaceStates[String(window.id ?? "")]?.hint ?? ""),
             x: Number(window.x ?? 0),
             y: Number(window.y ?? 0),
             width: Number(window.w ?? 0),
@@ -143,6 +194,39 @@ Singleton {
         }
         root.mruWindowIds = nextMru
         root.windowOrderChanged()
+    }
+
+    function setSurfaceState(data): void {
+        const surfaces = Array.isArray(data?.surfaces) ? data.surfaces : []
+        const next = ({})
+        for (const surface of surfaces) {
+            const id = String(surface.id ?? "")
+            if (id.length === 0)
+                continue
+            next[id] = {
+                fullscreen: surface.fullscreen === true,
+                output: String(surface.output ?? ""),
+                eligible: surface.eligible === true,
+                hint: String(surface.hint ?? ""),
+                ruleOverride: surface.rule_override ?? null
+            }
+        }
+        root.surfaceStates = next
+        root.windows = root.windows.map(window => Object.assign({}, window, {
+            fullscreen: next[window.id]?.fullscreen === true,
+            output: String(next[window.id]?.output ?? ""),
+            tearingEligible: next[window.id]?.eligible === true,
+            tearingHint: String(next[window.id]?.hint ?? "")
+        }))
+        root.activeWindow = root.windows.find(window => window.focused) ?? null
+    }
+
+    function querySurfaceState(): bool {
+        if (!root.available)
+            return false
+        return stateQuerySocketComponent.createObject(root, {
+            payload: JSON.stringify({ cmd: "tearing" })
+        }) !== null
     }
 
     function setWorkspaces(data): void {
