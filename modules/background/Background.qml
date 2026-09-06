@@ -574,7 +574,7 @@ Scope {
         // that Aurora glass/blur depends on.
         readonly property bool _multiMonEnabled: WallpaperListener.multiMonitorEnabled
         readonly property string monitorName: {
-            if (CompositorService.isNiri) {
+            if (CompositorService.hasWorkspaceBackend) {
                 return modelData.name ?? ""
             } else if (CompositorService.isHyprland && bgRoot.monitor) {
                 return bgRoot.monitor.name ?? ""
@@ -833,14 +833,13 @@ Scope {
         // Dynamic focus based on windows
         property bool hasWindowsOnCurrentWorkspace: {
             try {
-                if (CompositorService.isNiri && typeof NiriService !== "undefined" && NiriService.windows && NiriService.workspaces) {
-                    const allWs = Object.values(NiriService.workspaces);
-                    if (!allWs || allWs.length === 0) return false;
+                if (CompositorService.hasWorkspaceBackend) {
+                    const allWs = CompositorService.workspaces ?? [];
+                    if (allWs.length === 0) return false;
                     const outputName = bgRoot.modelData?.name ?? "";
-                    const currentWs = allWs.find(ws => ws.output === outputName
-                        && ws.is_active);
+                    const currentWs = allWs.find(ws => ws.output === outputName && ws.active);
                     if (!currentWs) return false;
-                    return NiriService.windows.some(w => w.workspace_id === currentWs.id);
+                    return (CompositorService.windows ?? []).some(w => w.workspaceId === currentWs.id);
                 }
                 if (CompositorService.isHyprland && monitor && monitor.activeWorkspace) {
                     const wsId = monitor.activeWorkspace.id;
@@ -1193,7 +1192,9 @@ Scope {
                     bgRoot.effectiveWorkspaceLast :
                     (Math.ceil(bgRoot.lastWorkspaceId / chunkSize) * chunkSize)
                 property int range: Math.max(1, upper - lower)
-                property int currentWorkspaceId: CompositorService.isNiri ? (NiriService.focusedWorkspaceIndex ?? 1) : (bgRoot.monitor?.activeWorkspace?.id ?? 1)
+                property int currentWorkspaceId: CompositorService.hasWorkspaceBackend
+                    ? CompositorService.currentWorkspaceNumber(bgRoot.modelData?.name ?? "")
+                    : (bgRoot.monitor?.activeWorkspace?.id ?? 1)
                 property real workspaceProgress: ParallaxMath.normalizedWorkspaceProgress(currentWorkspaceId, lower, upper)
                 property real valueX: ParallaxMath.axisValue(
                     "horizontal",

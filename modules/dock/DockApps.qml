@@ -406,8 +406,8 @@ Item {
         const tmToplevels = ToplevelManager.toplevels.values;
         const sorted = CompositorService.sortedToplevels;
         const sortedHasItems = sorted && sorted.length > 0;
-        const niriAuthoritative = CompositorService.isNiri;
-        const allToplevels = niriAuthoritative
+        const compositorAuthoritative = CompositorService.hasWorkspaceBackend;
+        const allToplevels = compositorAuthoritative
             ? (sorted ?? [])
             : (sortedHasItems ? sorted : tmToplevels);
 
@@ -416,7 +416,7 @@ Item {
         // exist there. On Niri this is redundant (sortToplevels already drops
         // ghosts).
         const liveToplevelCounts = new Map();
-        const crossCheck = sortedHasItems && !niriAuthoritative;
+        const crossCheck = sortedHasItems && !compositorAuthoritative;
         if (crossCheck) {
             for (const tl of tmToplevels) {
                 const key = root._toplevelLiveKey(tl);

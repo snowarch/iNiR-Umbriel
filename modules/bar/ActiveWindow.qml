@@ -15,18 +15,8 @@ Item {
     property bool focusingThisMonitor: CompositorService.isHyprland ? (HyprlandData.activeWorkspace?.monitor == monitor?.name) : true
     property var biggestWindow: CompositorService.isHyprland ? HyprlandData.biggestWindowForWorkspace(HyprlandData.monitors[root.monitor?.id]?.activeWorkspace.id) : null
 
-    // Ventana activa según Niri (focus global)
-    property var niriFocusedWindow: {
-        if (!CompositorService.isNiri || !NiriService || !NiriService.windows)
-            return null
-        const wins = NiriService.windows
-        for (var i = 0; i < wins.length; ++i) {
-            const w = wins[i]
-            if (w && w.is_focused)
-                return w
-        }
-        return null
-    }
+    property var compositorFocusedWindow: CompositorService.hasWorkspaceBackend
+        ? CompositorService.activeWindow : null
 
     function shortenText(str, maxLen) {
         if (!str)
@@ -38,10 +28,10 @@ Item {
     }
 
     property string displayAppName: {
-        if (CompositorService.isNiri) {
-            const w = niriFocusedWindow
+        if (CompositorService.hasWorkspaceBackend) {
+            const w = compositorFocusedWindow
             if (w) {
-                const base = w.app_id || w.appId || Translation.tr("Desktop")
+                const base = w.appId || Translation.tr("Desktop")
                 return shortenText(base, 40)
             }
             return Translation.tr("Desktop")
@@ -56,12 +46,12 @@ Item {
     }
 
     property string displayTitle: {
-        if (CompositorService.isNiri) {
-            const w = niriFocusedWindow
+        if (CompositorService.hasWorkspaceBackend) {
+            const w = compositorFocusedWindow
             if (w && w.title) {
                 return shortenText(w.title, 80)
             }
-            const wsNum = NiriService.getCurrentWorkspaceNumber()
+            const wsNum = CompositorService.currentWorkspaceNumber()
             return shortenText(`${Translation.tr("Workspace")} ${wsNum}`, 80)
         }
 

@@ -67,7 +67,7 @@ Item {
     }
 
     function _workspaceLabel(workspace, workspaceValue): string {
-        if (CompositorService.isNiri && workspace) {
+        if (CompositorService.hasWorkspaceBackend && workspace) {
             const name = root._stringOr(workspace.name, "")
             if (name.length > 0)
                 return name
@@ -123,20 +123,19 @@ Item {
     }
 
     // Per-monitor: each bar shows workspaces for its own output (Niri)
-    readonly property bool perMonitor: root.configuredPerMonitor && CompositorService.isNiri === true
+    readonly property bool perMonitor: root.configuredPerMonitor && CompositorService.hasWorkspaceBackend
     readonly property string screenName: root.QsWindow.window?.screen?.name ?? ""
     readonly property var outputWorkspaces: {
-        if (!CompositorService.isNiri) return []
-        if (perMonitor && screenName.length > 0) {
-            return (NiriService.allWorkspaces ?? []).filter(w => w.output === screenName)
-        }
-        return NiriService.currentOutputWorkspaces ?? []
+        if (!CompositorService.hasWorkspaceBackend) return []
+        if (perMonitor && screenName.length > 0)
+            return (CompositorService.workspaces ?? []).filter(workspace => workspace.output === screenName)
+        return CompositorService.currentOutputWorkspaces ?? []
     }
     function workspaceForSlot(slotNumber) {
-        if (!CompositorService.isNiri)
+        if (!CompositorService.hasWorkspaceBackend)
             return null
         if (!root.perMonitor)
-            return (NiriService.allWorkspaces ?? []).find(w => w.idx === slotNumber) ?? null
+            return (CompositorService.workspaces ?? []).find(workspace => workspace.index === slotNumber) ?? null
         const slotIndex = slotNumber - 1
         if (slotIndex < 0 || slotIndex >= root.outputWorkspaces.length)
             return null
@@ -144,36 +143,34 @@ Item {
     }
     function workspaceIndexForSlot(slotNumber) {
         const ws = workspaceForSlot(slotNumber)
-        return ws?.idx ?? slotNumber
+        return ws?.index ?? slotNumber
     }
     // This bar renders its own output's workspaces, but a niri Index reference
     // resolves against the *focused* output and idx repeats across outputs — so
     // clicking slot 1 here switched the other monitor whenever focus was
     // elsewhere. Ids are globally unique; fall back to idx only when unavailable.
     function switchToSlot(slotNumber) {
-        const ws = root.workspaceForSlot(slotNumber)
-        if (ws?.id !== undefined)
-            NiriService.switchToWorkspaceById(ws.id)
-        else
-            NiriService.switchToWorkspace(root.workspaceIndexForSlot(slotNumber))
+        const workspace = root.workspaceForSlot(slotNumber)
+        if (workspace)
+            CompositorService.switchWorkspace(workspace)
     }
 
     // Scroll behavior: "workspace" = switch workspaces, "column" = cycle windows left/right in same workspace
     readonly property bool columnMode: root.scrollBehavior === "column" && CompositorService.isNiri
 
     readonly property int currentWorkspaceNumber: {
-        if (CompositorService.isNiri) {
+        if (CompositorService.hasWorkspaceBackend) {
             if (root.perMonitor) {
-                const activeSlot = root.outputWorkspaces.findIndex(w => w.is_active)
+                const activeSlot = root.outputWorkspaces.findIndex(workspace => workspace.active)
                 return activeSlot >= 0 ? activeSlot + 1 : 1
             }
-            return NiriService.getCurrentWorkspaceNumber()
+            return CompositorService.currentWorkspaceNumber()
         }
         return monitor?.activeWorkspace?.id || 1
     }
     
     // Dynamic workspace count: use actual workspaces from Niri, or fixed count
-    readonly property bool dynamicCount: root.configuredDynamicCount && CompositorService.isNiri === true
+    readonly property bool dynamicCount: root.configuredDynamicCount && CompositorService.hasWorkspaceBackend
     readonly property int actualWorkspaceCount: {
         if (!dynamicCount)
             return root.configuredWorkspaceCount
@@ -253,15 +250,14 @@ Item {
     }
 
     function doUpdateWorkspaceOccupied() {
-        if (CompositorService.isNiri) {
-            const wsList = root.outputWorkspaces || []
-            const windows = NiriService.windows || []
+        if (CompositorService.hasWorkspaceBackend) {
+            const windows = CompositorService.windows || []
             const base = workspaceGroup * root.workspacesShown
 
             // Build set of workspace IDs that currently contain windows (O(n))
             const occupiedWorkspaceIds = new Set()
             for (let i = 0; i < windows.length; i++) {
-                const wsId = windows[i]?.workspace_id
+                const wsId = windows[i]?.workspaceId
                 if (wsId !== undefined && wsId !== null) occupiedWorkspaceIds.add(wsId)
             }
 
@@ -299,17 +295,11 @@ Item {
         }
     }
     Connections {
-        target: NiriService
-        enabled: CompositorService.isNiri
-        function onAllWorkspacesChanged() {
-            updateWorkspaceOccupied();
-        }
-        function onCurrentOutputWorkspacesChanged() {
-            updateWorkspaceOccupied();
-        }
-        function onWindowsChanged() {
-            updateWorkspaceOccupied();
-        }
+        target: CompositorService
+        enabled: CompositorService.hasWorkspaceBackend
+        function onWorkspacesChanged() { updateWorkspaceOccupied() }
+        function onCurrentOutputWorkspacesChanged() { updateWorkspaceOccupied() }
+        function onWindowsChanged() { updateWorkspaceOccupied() }
     }
     onWorkspaceGroupChanged: {
         updateWorkspaceOccupied();
@@ -345,7 +335,7 @@ Item {
             if (root.invertScroll) delta = -delta
             const direction = delta > 0 ? 1 : -1
 
-            if (CompositorService.isNiri) {
+            if (CompositorService.hasWorkspaceBackend) {
                 if (root.columnMode) {
                     // Column mode with wrap-around
                     const windowCount = root.currentWorkspaceWindows.length
@@ -520,7 +510,7 @@ Item {
                 implicitHeight: vertical ? Appearance.sizes.verticalBarWidth : Appearance.sizes.barHeight
                 implicitWidth: vertical ? Appearance.sizes.verticalBarWidth : Appearance.sizes.verticalBarWidth
                 onPressed: {
-                    if (CompositorService.isNiri) {
+                    if (CompositorService.hasWorkspaceBackend) {
                         root.switchToSlot(workspaceValue)
                     } else if (CompositorService.isHyprland) {
                         Hyprland.dispatch(`workspace ${workspaceValue}`)
@@ -533,22 +523,21 @@ Item {
                     id: workspaceButtonBackground
                     implicitWidth: workspaceButtonWidth
                     implicitHeight: workspaceButtonWidth
-                    readonly property var niriWorkspace: CompositorService.isNiri 
+                    readonly property var compositorWorkspace: CompositorService.hasWorkspaceBackend
                         ? root.workspaceForSlot(button.workspaceValue)
                         : null
                     property var biggestWindow: {
-                        if (CompositorService.isNiri) {
-                            if (!niriWorkspace) return null
-                            const wins = NiriService.windows?.filter(w => w.workspace_id === niriWorkspace.id) ?? []
+                        if (CompositorService.hasWorkspaceBackend) {
+                            if (!compositorWorkspace) return null
+                            const wins = CompositorService.windows?.filter(window => window.workspaceId === compositorWorkspace.id) ?? []
                             if (wins.length === 0) return null
-                            return wins.find(w => w.is_focused) || wins[0]
-                        } else {
-                            return HyprlandData.biggestWindowForWorkspace(button.workspaceValue)
+                            return wins.find(window => window.focused) || wins[0]
                         }
+                        return HyprlandData.biggestWindowForWorkspace(button.workspaceValue)
                     }
                     property var mainAppIconSource: {
-                        const appClass = CompositorService.isNiri 
-                            ? (biggestWindow?.app_id || biggestWindow?.appId) 
+                        const appClass = CompositorService.hasWorkspaceBackend
+                            ? biggestWindow?.appId
                             : biggestWindow?.class
                         return AppSearch.getIconSource(appClass)
                     }

@@ -93,7 +93,7 @@ Singleton {
     }
 
     function increaseBrightness(): void {
-        const focusedName = CompositorService.isNiri ? NiriService.currentOutput : Hyprland.focusedMonitor?.name;
+        const focusedName = CompositorService.hasWorkspaceBackend ? CompositorService.currentOutput : Hyprland.focusedMonitor?.name;
         if (!focusedName) return;
         const monitor = monitors.find(m => focusedName === m.screen.name);
         if (monitor)
@@ -101,7 +101,7 @@ Singleton {
     }
 
     function decreaseBrightness(): void {
-        const focusedName = CompositorService.isNiri ? NiriService.currentOutput : Hyprland.focusedMonitor?.name;
+        const focusedName = CompositorService.hasWorkspaceBackend ? CompositorService.currentOutput : Hyprland.focusedMonitor?.name;
         if (!focusedName) return;
         const monitor = monitors.find(m => focusedName === m.screen.name);
         if (monitor)
@@ -400,15 +400,14 @@ Singleton {
                 }
             }
 
-            // Niri support for anti-flashbang
             Connections {
-                enabled: (Config.options?.light?.antiFlashbang?.enable ?? false) && Appearance.m3colors.darkmode && CompositorService.isNiri
-                target: CompositorService.isNiri ? NiriService : null
+                enabled: (Config.options?.light?.antiFlashbang?.enable ?? false) && Appearance.m3colors.darkmode && CompositorService.hasWorkspaceBackend
+                target: CompositorService.hasWorkspaceBackend ? CompositorService : null
                 function onActiveWindowChanged() {
                     screenshotTimer.interval = root.contentSwitchDelay;
                     screenshotTimer.restart();
                 }
-                function onFocusedWorkspaceIdChanged() {
+                function onWorkspacesChanged() {
                     screenshotTimer.interval = root.workspaceAnimationDelay;
                     screenshotTimer.restart();
                 }

@@ -81,9 +81,9 @@ Item {
      * the active one marked, so the OSD would only be a redundant morph.
      */
     readonly property string activeWsName: {
-        if (CompositorService.isNiri) {
-            const ws = (NiriService.allWorkspaces ?? []).find(w => w.is_focused && w.output === root.screenName);
-            return ws ? String(ws.idx) : "";
+        if (CompositorService.hasWorkspaceBackend) {
+            const ws = (CompositorService.workspaces ?? []).find(w => w.focused && w.output === root.screenName);
+            return ws ? String(ws.index) : "";
         }
         const mons = Hyprland.monitors?.values ?? [];
         for (let i = 0; i < mons.length; i++)

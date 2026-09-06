@@ -130,8 +130,8 @@ Singleton {
                 && Quickshell.screens.some(screen => (screen?.name ?? "") === requestedName))
             return requestedName
 
-        if (CompositorService.isNiri && (NiriService.currentOutput ?? "").length > 0)
-            return NiriService.currentOutput
+        if (CompositorService.hasWorkspaceBackend && (CompositorService.currentOutput ?? "").length > 0)
+            return CompositorService.currentOutput
 
         if (CompositorService.isHyprland && (Hyprland.focusedMonitor?.name ?? "").length > 0)
             return Hyprland.focusedMonitor.name

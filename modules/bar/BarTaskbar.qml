@@ -162,8 +162,8 @@ Item {
 
     // App id of the currently focused window (lowercased). Used to flag the
     // focused item so it's prioritised for visibility when space runs out.
-    readonly property string focusedAppId: CompositorService.isNiri
-        ? String(NiriService.activeWindow?.app_id ?? "").toLowerCase()
+    readonly property string focusedAppId: CompositorService.hasWorkspaceBackend
+        ? String(CompositorService.activeWindow?.appId ?? "").toLowerCase()
         : String(ToplevelManager.activeToplevel?.appId ?? "").toLowerCase()
 
     function _doRebuildDockItems(): void {
@@ -181,8 +181,8 @@ Item {
         // when sortedToplevels hasn't been populated.
         const sorted = CompositorService.sortedToplevels;
         const sortedHasItems = sorted && sorted.length > 0;
-        const niriAuthoritative = CompositorService.isNiri;
-        const allToplevels = niriAuthoritative
+        const compositorAuthoritative = CompositorService.hasWorkspaceBackend;
+        const allToplevels = compositorAuthoritative
                 ? (sorted ?? [])
                 : (sortedHasItems ? sorted : ToplevelManager.toplevels.values);
 
@@ -190,7 +190,7 @@ Item {
         // against live ToplevelManager and drop entries with no live handle.
         // On Niri this is redundant (sortToplevels already filters ghosts).
         const liveToplevelCounts = new Map();
-        const crossCheck = sortedHasItems && !niriAuthoritative;
+        const crossCheck = sortedHasItems && !compositorAuthoritative;
         if (crossCheck) {
             for (const tl of ToplevelManager.toplevels.values) {
                 const key = root._toplevelLiveKey(tl);

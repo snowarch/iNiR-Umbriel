@@ -81,10 +81,11 @@ Scope {
 
         const items = []
         const itemsById = {}
+        const workspaceById = new Map((workspaces ?? []).map(workspace => [String(workspace.id), workspace]))
 
         for (let i = 0; i < windows.length; i++) {
             const w = windows[i]
-            const appId = w.app_id || ""
+            const appId = w.appId || ""
             let appName = appId
             if (appName && appName.indexOf(".") !== -1) {
                 const parts = appName.split(".")
@@ -93,31 +94,30 @@ Scope {
             if (!appName && w.title) appName = w.title
             appName = toTitleCase(appName)
 
-            const ws = workspaces[w.workspace_id]
-            const wsIdx = ws && ws.idx !== undefined ? ws.idx : 0
+            const ws = workspaceById.get(String(w.workspaceId))
+            const wsIdx = ws?.index ?? 0
 
             items.push({
                 id: w.id,
                 appId: appId,
                 appName: appName,
                 title: w.title || "",
-                workspaceId: w.workspace_id,
+                workspaceId: w.workspaceId,
                 workspaceIdx: wsIdx,
-                isFocused: w.is_focused ?? false,
-                isFloating: w.is_floating ?? false,
+                isFocused: w.focused ?? false,
+                isFloating: w.floating ?? false,
                 icon: root.getCachedIcon(appId, appName, w.title)
             })
-            itemsById[w.id] = items[items.length - 1]
+            itemsById[String(w.id)] = items[items.length - 1]
         }
 
-        // Sort by workspace then app name
         items.sort((a, b) => {
-            const ia = workspaces[a.workspaceId]?.idx ?? 0
-            const ib = workspaces[b.workspaceId]?.idx ?? 0
+            const ia = workspaceById.get(String(a.workspaceId))?.index ?? 0
+            const ib = workspaceById.get(String(b.workspaceId))?.index ?? 0
             if (ia !== ib) return ia - ib
             const cmp = (a.appName || a.title || "").localeCompare(b.appName || b.title || "")
             if (cmp !== 0) return cmp
-            return a.id - b.id
+            return String(a.id).localeCompare(String(b.id))
         })
 
         // MRU ordering
@@ -125,13 +125,14 @@ Scope {
             const ordered = []
             const used = {}
             for (const id of mruIds) {
-                if (itemsById[id]) {
-                    ordered.push(itemsById[id])
-                    used[id] = true
+                const key = String(id)
+                if (itemsById[key]) {
+                    ordered.push(itemsById[key])
+                    used[key] = true
                 }
             }
             for (const it of items) {
-                if (!used[it.id]) ordered.push(it)
+                if (!used[String(it.id)]) ordered.push(it)
             }
             return ordered
         }
@@ -140,9 +141,9 @@ Scope {
 
     function rebuildSnapshot() {
         itemSnapshot = buildItemsFrom(
-            NiriService.windows || [],
-            NiriService.workspaces || {},
-            NiriService.mruWindowIds || []
+            CompositorService.windows || [],
+            CompositorService.workspaces || [],
+            CompositorService.mruWindowIds || []
         )
         currentIndex = 0
         _warmedUp = true
@@ -150,9 +151,9 @@ Scope {
 
     function rebuildNoUiSnapshot() {
         root.noUiSnapshot = buildItemsFrom(
-            NiriService.windows || [],
-            NiriService.workspaces || {},
-            NiriService.mruWindowIds || []
+            CompositorService.windows || [],
+            CompositorService.workspaces || [],
+            CompositorService.mruWindowIds || []
         )
         root.noUiIndex = 0
     }
@@ -164,14 +165,14 @@ Scope {
         const idx = Math.max(0, Math.min(len - 1, root.noUiIndex))
         const id = root.noUiSnapshot[idx]?.id
         if (id !== undefined)
-            NiriService.focusWindow(id)
+            CompositorService.focusWindow(id)
     }
 
     // Pre-warm al inicio
     Timer {
         id: warmUpTimer
         interval: 2000
-        running: !root._warmedUp && (NiriService.windows?.length ?? 0) > 0
+        running: !root._warmedUp && (CompositorService.windows?.length ?? 0) > 0
         onTriggered: {
             root.rebuildSnapshot()
             Qt.callLater(function() {
@@ -182,17 +183,17 @@ Scope {
     }
 
     function maybeOpenOverview() {
-        if (!CompositorService.isNiri || !root.getShowOverview()) return
-        if (!NiriService.inOverview) {
+        if (!CompositorService.hasWorkspaceBackend || !root.getShowOverview()) return
+        if (!CompositorService.inOverview) {
             overviewOpenedByAltSwitcher = true
-            NiriService.toggleOverview()
+            CompositorService.toggleOverview()
         }
     }
 
     function maybeCloseOverview() {
-        if (!CompositorService.isNiri || !root.getShowOverview()) return
-        if (overviewOpenedByAltSwitcher && NiriService.inOverview) {
-            NiriService.toggleOverview()
+        if (!CompositorService.hasWorkspaceBackend || !root.getShowOverview()) return
+        if (overviewOpenedByAltSwitcher && CompositorService.inOverview) {
+            CompositorService.toggleOverview()
         }
         overviewOpenedByAltSwitcher = false
     }
@@ -264,7 +265,7 @@ Scope {
     function activateCurrent() {
         const item = itemSnapshot[currentIndex]
         if (item?.id !== undefined) {
-            NiriService.focusWindow(item.id)
+            CompositorService.focusWindow(item.id)
         }
     }
 
@@ -274,7 +275,7 @@ Scope {
     }
 
     function activateAndClose(windowId) {
-        NiriService.focusWindow(windowId)
+        CompositorService.focusWindow(windowId)
         if (root.getCloseOnFocus()) {
             closeSwitcher()
         } else if (root.getAutoHide()) {
@@ -305,11 +306,12 @@ Scope {
 
     // Window list sync
     Connections {
-        target: NiriService
+        target: CompositorService
+        enabled: CompositorService.hasWorkspaceBackend
         function onWindowsChanged() {
             if (!GlobalStates.waffleAltSwitcherOpen || !root.itemSnapshot.length) return
 
-            const wins = NiriService.windows || []
+            const wins = CompositorService.windows || []
             if (!wins.length) {
                 root.closeSwitcher()
                 return
@@ -507,7 +509,7 @@ Scope {
                 if (root.getQuickSwitch() && root.itemSnapshot.length > 1 && !root.quickSwitchDone) {
                     root.quickSwitchDone = true
                     root.currentIndex = 1
-                    NiriService.focusWindow(root.itemSnapshot[1].id)
+                    CompositorService.focusWindow(root.itemSnapshot[1].id)
                     // Start a timer to reset quickSwitchDone if user doesn't press again
                     quickSwitchResetTimer.restart()
                     return

@@ -67,20 +67,20 @@ Scope {
             if (!root._acceptTrigger())
                 return;
 
-            // Try cached activeWindow first, fallback to niri query
-            const win = NiriService.activeWindow;
+            const win = CompositorService.activeWindow;
             if (win?.id) {
-                root.processWindow(win);
-            } else {
+                root.processWindow({ id: win.id, app_id: win.appId ?? "" });
+            } else if (CompositorService.isNiri) {
                 focusedWindowProc.running = true;
             }
         }
 
-        function triggerWindow(windowId: int, appId: string): void {
-            if (windowId <= 0 || !root._acceptTrigger())
+        function triggerWindow(windowId: string, appId: string): void {
+            const id = String(windowId ?? "")
+            if (id.length === 0 || !root._acceptTrigger())
                 return;
             root.processWindow({
-                id: windowId,
+                id: id,
                 app_id: appId
             });
         }
@@ -96,12 +96,11 @@ Scope {
         if (!win?.id)
             return;
         const appId = String(win?.app_id ?? "").toLowerCase();
-        if (appId === "spotify") {
+        if (appId === "spotify" && CompositorService.isNiri) {
             MinimizedWindows.minimize(win.id);
             return;
         }
-        // Use niri msg directly - more reliable than socket IPC for some apps
-        Quickshell.execDetached(["niri", "msg", "action", "close-window", "--id", String(win.id)]);
+        CompositorService.closeWindow(win.id);
     }
 
     function confirmClose(): void {

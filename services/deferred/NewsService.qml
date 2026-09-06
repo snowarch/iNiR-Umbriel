@@ -141,13 +141,13 @@ Singleton {
 
     function openArticle(article) {
         // Focus an existing browser window first so the link doesn't open unseen.
-        if (typeof NiriService !== "undefined" && NiriService.windows) {
+        if (CompositorService.hasWorkspaceBackend) {
             const browserPatterns = ["firefox", "chromium", "chrome", "brave", "zen", "librewolf", "vivaldi", "opera"]
-            const windows = NiriService.windows ?? []
+            const windows = CompositorService.windows ?? []
             for (let i = 0; i < windows.length; i++) {
-                const appId = (windows[i].app_id ?? "").toLowerCase()
+                const appId = (windows[i].appId ?? "").toLowerCase()
                 if (browserPatterns.some(p => appId.includes(p))) {
-                    NiriService.focusWindow(windows[i].id)
+                    CompositorService.focusWindow(windows[i].id)
                     break
                 }
             }

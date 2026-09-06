@@ -11,9 +11,11 @@ Singleton {
 
     property bool isHyprland: false
     property bool isNiri: false
+    property bool isUmbriel: false
 
     readonly property string hyprlandSignature: Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE")
     readonly property string niriSocket: Quickshell.env("NIRI_SOCKET")
+    readonly property string umbrielSocket: Quickshell.env("UMBRIEL_SOCKET")
 
     property var sortedToplevels: []
 
@@ -27,6 +29,44 @@ Singleton {
     property bool _refreshScheduled: false
 
     property var _coordCache: ({})
+
+    readonly property bool hasWorkspaceBackend: root.isNiri || root.isUmbriel
+    readonly property var windows: {
+        if (root.isUmbriel)
+            return UmbrielService.windows
+        if (!root.isNiri)
+            return []
+        return (NiriService.windows ?? []).map(window => Object.assign({}, window, {
+            workspaceId: window.workspace_id,
+            appId: window.app_id ?? window.appId ?? "",
+            focused: window.is_focused === true,
+            active: window.is_focused === true,
+            floating: window.is_floating === true,
+            minimized: window.is_minimized === true
+        }))
+    }
+    readonly property var workspaces: {
+        if (root.isUmbriel)
+            return UmbrielService.workspaces
+        if (!root.isNiri)
+            return []
+        return (NiriService.allWorkspaces ?? []).map(workspace => Object.assign({}, workspace, {
+            index: Number(workspace.idx ?? 0),
+            active: workspace.is_active === true,
+            focused: workspace.is_focused === true
+        }))
+    }
+    readonly property string currentOutput: root.isUmbriel ? UmbrielService.currentOutput
+        : root.isNiri ? NiriService.currentOutput : ""
+    readonly property var currentOutputWorkspaces: root.workspaces.filter(workspace =>
+        workspace.output === root.currentOutput)
+    readonly property var activeWindow: root.windows.find(window => window.focused) ?? null
+    readonly property var mruWindowIds: root.isUmbriel ? UmbrielService.mruWindowIds
+        : root.isNiri ? NiriService.mruWindowIds : []
+    readonly property bool inOverview: root.isUmbriel ? UmbrielService.inOverview
+        : root.isNiri ? NiriService.inOverview : false
+    readonly property bool actionReady: root.isUmbriel ? UmbrielService.available
+        : root.isNiri ? NiriService.actionReady : false
 
     Timer {
         id: refreshTimer
@@ -135,6 +175,12 @@ Singleton {
         function onWindowOrderChanged() { root.scheduleSort() }
         function onActiveWindowChanged() { root.scheduleSort() }
     }
+    Connections {
+        target: UmbrielService
+        enabled: root.isUmbriel && root.sortingActive
+        function onWindowOrderChanged() { root.scheduleSort() }
+        function onActiveWindowChanged() { root.scheduleSort() }
+    }
     Component.onCompleted: {
         detectCompositor()
     }
@@ -143,13 +189,90 @@ Singleton {
         if (!ToplevelManager.toplevels || !ToplevelManager.toplevels.values)
             return []
 
-        if (isNiri)
-            return NiriService.sortToplevels(ToplevelManager.toplevels.values)
+        if (isNiri) {
+            return NiriService.sortToplevels(ToplevelManager.toplevels.values).map(toplevel =>
+                Object.assign({}, toplevel, {
+                    compositorWindowId: toplevel.niriWindowId,
+                    workspaceId: toplevel.niriWorkspaceId
+                }))
+        }
+
+        if (isUmbriel)
+            return sortUmbrielToplevels(ToplevelManager.toplevels.values)
 
         if (isHyprland)
             return sortHyprlandToplevelsSafe()
 
         return Array.from(ToplevelManager.toplevels.values)
+    }
+
+    function _matchToplevelToWindow(toplevel, window) {
+        if (!toplevel || !window || toplevel.appId !== window.appId)
+            return 0
+        let score = 1
+        if (window.title && toplevel.title) {
+            if (toplevel.title === window.title)
+                score = 3
+            else if (toplevel.title.includes(window.title) || window.title.includes(toplevel.title))
+                score = 2
+        }
+        return score
+    }
+
+    function _enrichUmbrielToplevel(toplevel, window) {
+        const windowId = window.id
+        const enriched = {
+            appId: toplevel.appId,
+            title: toplevel.title,
+            activated: window.focused,
+            compositorWindowId: windowId,
+            workspaceId: window.workspaceId,
+            _sourceKey: `umbriel:${windowId}`,
+            _sourceToplevel: toplevel,
+            activate: function () { return UmbrielService.focusWindow(windowId) },
+            close: function () { return UmbrielService.closeWindow(windowId) }
+        }
+        for (let prop in toplevel) {
+            if (!(prop in enriched))
+                enriched[prop] = toplevel[prop]
+        }
+        return enriched
+    }
+
+    function sortUmbrielToplevels(toplevels) {
+        if (!toplevels || !root.isUmbriel)
+            return toplevels ? [...toplevels] : []
+        if (root.windows.length === 0)
+            return []
+
+        const usedToplevels = new Set()
+        const result = []
+        const orderedWindows = [...root.windows].sort((a, b) => {
+            if (a.x !== b.x) return a.x - b.x
+            if (a.y !== b.y) return a.y - b.y
+            return String(a.id).localeCompare(String(b.id))
+        })
+
+        for (const window of orderedWindows) {
+            let bestMatch = null
+            let bestScore = -1
+            for (const toplevel of toplevels) {
+                if (usedToplevels.has(toplevel))
+                    continue
+                const score = root._matchToplevelToWindow(toplevel, window)
+                if (score > bestScore) {
+                    bestScore = score
+                    bestMatch = toplevel
+                    if (score === 3)
+                        break
+                }
+            }
+            if (!bestMatch || bestScore <= 0)
+                continue
+            usedToplevels.add(bestMatch)
+            result.push(root._enrichUmbrielToplevel(bestMatch, window))
+        }
+        return result
     }
 
     function _get(o, path, fallback) {
@@ -317,9 +440,22 @@ Singleton {
     function filterCurrentWorkspace(toplevels, screen) {
         if (isNiri)
             return NiriService.filterCurrentWorkspace(toplevels, screen)
+        if (isUmbriel)
+            return filterUmbrielCurrentWorkspace(toplevels, screen)
         if (isHyprland)
             return filterHyprlandCurrentWorkspaceSafe(toplevels, screen)
         return toplevels
+    }
+
+    function filterUmbrielCurrentWorkspace(toplevels, screenName) {
+        if (!toplevels || toplevels.length === 0)
+            return toplevels
+        const workspace = root.workspaces.find(candidate =>
+            candidate.output === screenName && candidate.active)
+        if (!workspace)
+            return toplevels
+        return root.sortUmbrielToplevels(toplevels).filter(toplevel =>
+            toplevel.workspaceId === workspace.id)
     }
 
     function filterHyprlandCurrentWorkspaceSafe(toplevels, screenName) {
@@ -381,9 +517,18 @@ Singleton {
     }
 
     function detectCompositor() {
+        if (umbrielSocket && umbrielSocket.length > 0) {
+            isUmbriel = true
+            isNiri = false
+            isHyprland = false
+            console.info("CompositorService: Detected Umbriel with socket:", umbrielSocket)
+            return
+        }
+
         if (hyprlandSignature && hyprlandSignature.length > 0) {
             isHyprland = true
             isNiri = false
+            isUmbriel = false
             console.info("CompositorService: Detected Hyprland")
             try {
                 Hyprland.refreshToplevels()
@@ -394,17 +539,84 @@ Singleton {
         if (niriSocket && niriSocket.length > 0) {
             isNiri = true
             isHyprland = false
+            isUmbriel = false
             console.info("CompositorService: Detected Niri with socket:", niriSocket)
             return
         }
 
         isHyprland = false
         isNiri = false
+        isUmbriel = false
+    }
+
+    function currentWorkspaceNumber(outputName = "") {
+        const targetOutput = outputName.length > 0 ? outputName : root.currentOutput
+        const candidates = targetOutput.length > 0
+            ? root.workspaces.filter(workspace => workspace.output === targetOutput)
+            : root.workspaces
+        const active = candidates.find(workspace => workspace.active)
+            ?? candidates.find(workspace => workspace.focused)
+        return active?.index ?? 1
+    }
+
+    function focusWindow(windowId) {
+        if (root.isUmbriel)
+            return UmbrielService.focusWindow(windowId)
+        if (root.isNiri)
+            return NiriService.focusWindow(windowId)
+        return false
+    }
+
+    function closeWindow(windowId) {
+        if (root.isUmbriel)
+            return UmbrielService.closeWindow(windowId)
+        if (root.isNiri)
+            return NiriService.closeWindow(windowId)
+        return false
+    }
+
+    function switchWorkspace(workspace) {
+        if (!workspace)
+            return false
+        if (root.isUmbriel)
+            return UmbrielService.switchWorkspace(workspace)
+        if (root.isNiri) {
+            if (workspace.id !== undefined && workspace.id !== null)
+                return NiriService.switchToWorkspaceById(workspace.id)
+            return NiriService.switchToWorkspace(workspace.index ?? 1)
+        }
+        return false
+    }
+
+    function toggleOverview() {
+        if (root.isUmbriel)
+            return UmbrielService.toggleOverview()
+        if (root.isNiri)
+            return NiriService.toggleOverview()
+        return false
+    }
+
+    function focusWorkspaceUp() {
+        if (root.isUmbriel)
+            return UmbrielService.focusWorkspaceUp()
+        if (root.isNiri)
+            return NiriService.focusWorkspaceUp()
+        return false
+    }
+
+    function focusWorkspaceDown() {
+        if (root.isUmbriel)
+            return UmbrielService.focusWorkspaceDown()
+        if (root.isNiri)
+            return NiriService.focusWorkspaceDown()
+        return false
     }
 
     function powerOffMonitors() {
         if (isNiri)
             return NiriService.powerOffMonitors()
+        if (isUmbriel)
+            return UmbrielService.powerOffMonitors()
         if (isHyprland)
             return Hyprland.dispatch("dpms off")
         console.warn("CompositorService: Cannot power off monitors, unknown compositor")
@@ -413,6 +625,8 @@ Singleton {
     function powerOnMonitors() {
         if (isNiri)
             return NiriService.powerOnMonitors()
+        if (isUmbriel)
+            return UmbrielService.powerOnMonitors()
         if (isHyprland)
             return Hyprland.dispatch("dpms on")
         console.warn("CompositorService: Cannot power on monitors, unknown compositor")

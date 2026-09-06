@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Close window — tries QS first (for confirm dialog), falls back to niri.
+# Close window — tries QS first (for confirm dialog), then the active compositor.
 #
 # Race condition protection:
 # 1. We capture the focused window ID immediately (before spawn latency can shift focus).
@@ -12,24 +12,45 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 launcher_path="$script_dir/inir"
 
 # Capture focused window JSON immediately — this is the window the user intended to close.
-focused_window_json=$(niri msg -j focused-window 2>/dev/null)
-focused_id=$(printf '%s' "$focused_window_json" | grep -o '"id":[0-9]*' | grep -o '[0-9]*')
-focused_app_id=$(printf '%s' "$focused_window_json" | grep -o '"app_id":"[^"]*"' | sed 's/"app_id":"\([^"]*\)"/\1/')
+compositor=""
+focused_window_json=""
+if [ -n "${UMBRIEL_SOCKET:-}" ] && command -v umbriel >/dev/null 2>&1; then
+    compositor="umbriel"
+    focused_window_json=$(umbriel windows --json 2>/dev/null \
+        | jq -c 'first(.[] | select(.focused == true)) // empty' 2>/dev/null)
+elif [ -n "${NIRI_SOCKET:-}" ] && command -v niri >/dev/null 2>&1; then
+    compositor="niri"
+    focused_window_json=$(niri msg -j focused-window 2>/dev/null)
+fi
+
+focused_id=$(printf '%s' "$focused_window_json" | jq -r '.id // empty' 2>/dev/null)
+focused_app_id=$(printf '%s' "$focused_window_json" | jq -r '.app_id // empty' 2>/dev/null)
 
 close_focused() {
-    if [ "${focused_app_id,,}" = "spotify" ]; then
-        # Keep Spotify running but hide its window from current workspace.
+    if [ "$compositor" = "niri" ] && [ "${focused_app_id,,}" = "spotify" ]; then
         if [ -n "$focused_id" ]; then
             niri msg action move-window-to-workspace --window-id "$focused_id" --focus false 99 >/dev/null 2>&1
             return 0
         fi
     fi
 
-    if [ -n "$focused_id" ]; then
-        niri msg action close-window --id "$focused_id"
-    else
-        niri msg action close-window
-    fi
+    case "$compositor" in
+        umbriel)
+            if [ -n "$focused_id" ]; then
+                umbriel msg "window-close:$focused_id"
+            else
+                umbriel msg window-close
+            fi
+            ;;
+        niri)
+            if [ -n "$focused_id" ]; then
+                niri msg action close-window --id "$focused_id"
+            else
+                niri msg action close-window
+            fi
+            ;;
+        *) return 1 ;;
+    esac
 }
 
 # If QS is not running, close directly using the captured ID.

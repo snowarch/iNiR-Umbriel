@@ -204,13 +204,13 @@ Singleton {
      */
     function raiseWindow(n) {
         const app = String(n?.appName ?? "").toLowerCase();
-        if (app.length === 0 || !CompositorService.isNiri)
+        if (app.length === 0 || !CompositorService.hasWorkspaceBackend)
             return;
-        const win = (NiriService.windows ?? []).find(w =>
-            String(w.app_id ?? "").toLowerCase().includes(app)
-            || app.includes(String(w.app_id ?? "").toLowerCase()));
+        const win = (CompositorService.windows ?? []).find(w =>
+            String(w.appId ?? "").toLowerCase().includes(app)
+            || app.includes(String(w.appId ?? "").toLowerCase()));
         if (win)
-            NiriService.focusWindow(win.id);
+            CompositorService.focusWindow(win.id);
     }
 
     Timer {

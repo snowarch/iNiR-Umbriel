@@ -62,7 +62,7 @@ Scope {
                 readonly property bool autoHideEnabled: Config.options?.bar?.autoHide?.enable ?? false
                 readonly property bool pushWindowsWhenShown: Config.options?.bar?.autoHide?.pushWindows ?? false
                 readonly property bool overviewOwnsEdge: GlobalStates.overviewOpen
-                    || (CompositorService.isNiri && NiriService.inOverview)
+                    || (CompositorService.hasWorkspaceBackend && CompositorService.inOverview)
                 readonly property string outputName: barRoot.screen?.name ?? ""
                 readonly property real layerGap: Config.options.bar.m3.cornerStyle === 3
                     ? Config.options.bar.m3.gapsOut : 0

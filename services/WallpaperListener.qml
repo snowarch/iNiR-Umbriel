@@ -91,8 +91,8 @@ Singleton {
 
     // Get focused monitor name from compositor
     function getFocusedMonitor(): string {
-        if (CompositorService.isNiri) {
-            return NiriService.currentOutput ?? ""
+        if (CompositorService.hasWorkspaceBackend) {
+            return CompositorService.currentOutput ?? ""
         } else if (CompositorService.isHyprland) {
             return Hyprland.focusedMonitor?.name ?? ""
         }

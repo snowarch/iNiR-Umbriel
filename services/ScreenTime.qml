@@ -157,15 +157,11 @@ Singleton {
         let appId = ""
         let appName = ""
 
-        if (CompositorService.isNiri) {
-            // The initial WindowsChanged snapshot already marks the focused
-            // window, but NiriService.activeWindow is event-driven and can stay
-            // null until the next focus change. Use the reactive list as the
-            // startup fallback without spawning a compositor query per tick.
-            const win = NiriService.activeWindow
-                ?? (NiriService.windows ?? []).find(w => w.is_focused)
+        if (CompositorService.hasWorkspaceBackend) {
+            const win = CompositorService.activeWindow
+                ?? (CompositorService.windows ?? []).find(w => w.focused)
             if (win) {
-                appId = win.app_id || ""
+                appId = win.appId || ""
                 appName = appId ? _humanizeAppId(appId) : ""
             }
         } else if (CompositorService.isHyprland) {

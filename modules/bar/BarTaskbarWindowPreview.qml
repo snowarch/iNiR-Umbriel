@@ -25,11 +25,10 @@ Button {
 
     onClicked: {
         root.windowActivated()
-        if (CompositorService.isNiri && root.toplevel?.niriWindowId) {
-            NiriService.focusWindow(root.toplevel.niriWindowId)
-        } else {
+        if (CompositorService.hasWorkspaceBackend && root.toplevel?.compositorWindowId)
+            CompositorService.focusWindow(root.toplevel.compositorWindowId)
+        else
             root.toplevel?.activate()
-        }
     }
 
     background: Rectangle {
@@ -129,7 +128,7 @@ Button {
 
             readonly property int windowId: CompositorService.isNiri
                 ? (root.toplevel?.niriWindowId ?? root.toplevel?.id ?? 0)
-                : (root.toplevel?.id ?? 0)
+                : 0
             property string previewUrl: ""
 
             Rectangle {

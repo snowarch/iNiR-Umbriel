@@ -27,23 +27,20 @@ DockButton {
     // the brief window before the map is populated.
     readonly property var toplevels: (appListRoot?.toplevelsByUniqueId?.[appToplevel?.uniqueId] ?? appToplevel?.toplevels ?? [])
     readonly property var activeToplevel: ToplevelManager.activeToplevel
-    readonly property var niriFocusedWindow: CompositorService.isNiri
-        ? (NiriService.windows?.find(window => window.is_focused)
-            ?? NiriService.activeWindow
-            ?? null)
-        : null
-    readonly property int niriFocusedWindowId:
-        Number(root.niriFocusedWindow?.id ?? -1)
+    readonly property var compositorFocusedWindow: CompositorService.hasWorkspaceBackend
+        ? CompositorService.activeWindow : null
+    readonly property string compositorFocusedWindowId:
+        String(root.compositorFocusedWindow?.id ?? "")
     readonly property string activeWindowKey: {
-        if (CompositorService.isNiri)
-            return root.niriFocusedWindowId >= 0
-                ? "niri:" + root.niriFocusedWindowId
+        if (CompositorService.hasWorkspaceBackend)
+            return root.compositorFocusedWindowId.length > 0
+                ? "compositor:" + root.compositorFocusedWindowId
                 : ""
         const active = activeToplevel
         if (!active)
             return ""
-        if (active.niriWindowId !== undefined && active.niriWindowId !== null)
-            return "niri:" + active.niriWindowId
+        if (active.compositorWindowId !== undefined && active.compositorWindowId !== null)
+            return "compositor:" + active.compositorWindowId
         if (active.address !== undefined && active.address !== null && String(active.address).length > 0)
             return "addr:" + active.address
         if (active.wayland?.appId !== undefined && active.wayland?.appId !== null && active.activated)
@@ -53,8 +50,8 @@ DockButton {
     function _toplevelKey(toplevel) {
         if (!toplevel)
             return ""
-        if (toplevel.niriWindowId !== undefined && toplevel.niriWindowId !== null)
-            return "niri:" + toplevel.niriWindowId
+        if (toplevel.compositorWindowId !== undefined && toplevel.compositorWindowId !== null)
+            return "compositor:" + toplevel.compositorWindowId
         if (toplevel.address !== undefined && toplevel.address !== null && String(toplevel.address).length > 0)
             return "addr:" + toplevel.address
         if (toplevel.wayland?.appId !== undefined && toplevel.wayland?.appId !== null)
@@ -64,19 +61,19 @@ DockButton {
     function _toplevelIsActive(toplevel): bool {
         if (!toplevel)
             return false
-        if (CompositorService.isNiri) {
-            if (root.niriFocusedWindowId < 0)
+        if (CompositorService.hasWorkspaceBackend) {
+            if (root.compositorFocusedWindowId.length === 0)
                 return false
-            if (Number(toplevel.niriWindowId ?? -1) === root.niriFocusedWindowId)
+            if (String(toplevel.compositorWindowId ?? "") === root.compositorFocusedWindowId)
                 return true
-            const focusedAppId = String(root.niriFocusedWindow?.app_id ?? "").toLowerCase()
+            const focusedAppId = String(root.compositorFocusedWindow?.appId ?? "").toLowerCase()
             const toplevelAppId = String(toplevel.appId ?? "").toLowerCase()
             if (focusedAppId.length === 0 || toplevelAppId !== focusedAppId)
                 return false
             if (root.toplevels.length <= 1)
                 return true
             return String(toplevel.title ?? "")
-                === String(root.niriFocusedWindow?.title ?? "")
+                === String(root.compositorFocusedWindow?.title ?? "")
         }
         if (toplevel.activated)
             return true
@@ -355,15 +352,10 @@ DockButton {
 
     function focusToplevelAt(index: int): void {
         const toplevel = toplevels[index]
-        if (CompositorService.isNiri) {
-            if (toplevel?.niriWindowId) {
-                NiriService.focusWindow(toplevel.niriWindowId)
-            } else if (toplevel?.activate) {
-                toplevel.activate()
-            }
-        } else {
+        if (CompositorService.hasWorkspaceBackend && toplevel?.compositorWindowId)
+            CompositorService.focusWindow(toplevel.compositorWindowId)
+        else
             toplevel?.activate()
-        }
     }
 
     // Rotate focus through this app's windows. step +1 forward, -1 backward.
@@ -566,11 +558,10 @@ DockButton {
                     monochromeIcon: true,
                     action: () => {
                         for (let toplevel of root.toplevels) {
-                            if (CompositorService.isNiri && toplevel?.niriWindowId) {
-                                NiriService.closeWindow(toplevel.niriWindowId)
-                            } else {
+                            if (CompositorService.hasWorkspaceBackend && toplevel?.compositorWindowId)
+                                CompositorService.closeWindow(toplevel.compositorWindowId)
+                            else
                                 toplevel?.close()
-                            }
                         }
                     }
                 }

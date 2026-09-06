@@ -93,8 +93,8 @@ PopupWindow {
 
     function _windowKey(toplevel): string {
         if (!toplevel) return ""
-        if (CompositorService.isNiri && toplevel.niriWindowId)
-            return "niri:" + toplevel.niriWindowId
+        if (toplevel.compositorWindowId !== undefined && toplevel.compositorWindowId !== null)
+            return "compositor:" + toplevel.compositorWindowId
         if (toplevel.address)
             return "addr:" + toplevel.address
         return "id:" + (toplevel.appId ?? "") + ":" + (toplevel.title ?? "")

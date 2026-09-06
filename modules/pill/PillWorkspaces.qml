@@ -32,23 +32,15 @@ Item {
      * keys on the workspace index, Hyprland on the workspace id.
      */
     readonly property var slots: {
-        if (CompositorService.isNiri) {
-            const all = NiriService.allWorkspaces ?? [];
+        if (CompositorService.hasWorkspaceBackend) {
+            const all = CompositorService.workspaces ?? [];
             const mine = all
                 .filter(w => !workspaces.screenName || w.output === workspaces.screenName)
-                .sort((a, b) => a.idx - b.idx);
-
-            /**
-             * Niri always keeps one empty workspace past the last used one, and
-             * creates/destroys it as windows come and go. Rendering it makes the
-             * dot row change width on every window event, which drags the pill's
-             * hover geometry (and Ame's anchor) with it. Drop it unless it is the
-             * one you are actually looking at.
-             */
+                .sort((a, b) => a.index - b.index);
+            const occupied = new Set((CompositorService.windows ?? []).map(window => window.workspaceId));
             const trimmed = mine.filter((w, i) =>
-                !(i === mine.length - 1 && !w.is_focused && !w.active_window_id));
-
-            return trimmed.map(w => ({ key: w.idx, active: w.is_focused === true }));
+                !(i === mine.length - 1 && !w.focused && !occupied.has(w.id)));
+            return trimmed.map(w => ({ key: w.index, workspace: w, active: w.focused === true }));
         }
 
         const out = [];
@@ -70,7 +62,7 @@ Item {
     }
 
     readonly property int hyprActiveId: {
-        if (CompositorService.isNiri)
+        if (CompositorService.hasWorkspaceBackend)
             return -1;
         const mons = Hyprland.monitors?.values ?? [];
         for (let i = 0; i < mons.length; i++)
@@ -82,10 +74,13 @@ Item {
     readonly property int activeIndex: slots.findIndex(sl => sl.active)
 
     function focusSlot(key) {
-        if (CompositorService.isNiri)
-            NiriService.switchToWorkspace(key);
-        else
+        if (CompositorService.hasWorkspaceBackend) {
+            const slot = workspaces.slots.find(candidate => candidate.key === key);
+            if (slot?.workspace)
+                CompositorService.switchWorkspace(slot.workspace);
+        } else {
             Hyprland.dispatch("workspace " + key);
+        }
     }
 
     /**

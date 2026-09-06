@@ -48,17 +48,16 @@ Singleton {
 
     function _hasWindowsOnActiveWorkspace(outputName: string): bool {
         try {
-            if (!CompositorService.isNiri || !Array.isArray(NiriService.windows))
+            if (!CompositorService.hasWorkspaceBackend || !Array.isArray(CompositorService.windows))
                 return false;
-            const allWorkspaces = Object.values(NiriService.workspaces ?? {});
-            const activeWorkspaces = allWorkspaces.filter(workspace =>
-                workspace?.is_active
+            const activeWorkspaces = (CompositorService.workspaces ?? []).filter(workspace =>
+                workspace?.active
                     && (outputName.length === 0 || workspace.output === outputName));
             if (activeWorkspaces.length === 0)
                 return false;
-            return NiriService.windows.some(window =>
-                !window?.is_minimized
-                    && activeWorkspaces.some(workspace => workspace.id === window.workspace_id));
+            return CompositorService.windows.some(window =>
+                !window?.minimized
+                    && activeWorkspaces.some(workspace => workspace.id === window.workspaceId));
         } catch (e) {
             return false;
         }

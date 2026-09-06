@@ -88,7 +88,7 @@ Scope {
     }
 
     function focusedScreenName() {
-        const focused = CompositorService.isNiri ? NiriService.currentOutput : (Hyprland.focusedMonitor?.name ?? "");
+        const focused = CompositorService.hasWorkspaceBackend ? CompositorService.currentOutput : (Hyprland.focusedMonitor?.name ?? "");
         if (focused.length > 0 && root.targetScreens.some(screen => screen.name === focused))
             return focused;
         return root.targetScreens.length > 0 ? root.targetScreens[0].name : "";
@@ -229,7 +229,7 @@ Scope {
             property bool rightSidebarHold: false
             readonly property bool interactionHold: leftSidebarHold || rightSidebarHold || pill.trayMenuOpen
             readonly property bool overviewOwnsEdge: GlobalStates.overviewOpen
-                || (CompositorService.isNiri && NiriService.inOverview)
+                || (CompositorService.hasWorkspaceBackend && CompositorService.inOverview)
             readonly property bool reservationWanted: !overviewOwnsEdge
                 && (edgeRevealHover.revealHover || pill.hovered || surfaceOpen || pill.held || interactionHold)
             readonly property bool explicitReservationWanted: !overviewOwnsEdge

@@ -592,12 +592,12 @@ Singleton {
             .filter(s => s && s.length > 0)
             .map(s => s.toLowerCase());
 
-        if (CompositorService.isNiri) {
-            for (const w of (NiriService.windows ?? [])) {
-                const wAppId = String(w.app_id ?? "").toLowerCase();
+        if (CompositorService.hasWorkspaceBackend) {
+            for (const w of (CompositorService.windows ?? [])) {
+                const wAppId = String(w.appId ?? "").toLowerCase();
                 const wTitle = String(w.title ?? "").toLowerCase();
                 if (patterns.some(p => wAppId.includes(p) || wTitle.includes(p))) {
-                    NiriService.focusWindow(w.id);
+                    CompositorService.focusWindow(w.id);
                     return;
                 }
             }

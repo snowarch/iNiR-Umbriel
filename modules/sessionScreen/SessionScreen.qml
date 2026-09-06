@@ -19,11 +19,11 @@ Scope {
     Component.onCompleted: if (GlobalStates.sessionOpen)
         Qt.callLater(() => { root._presentedOpen = GlobalStates.sessionOpen })
     property var focusedScreen: {
-        if (CompositorService.isNiri && typeof NiriService !== "undefined" && NiriService.currentOutput) {
-            const name = NiriService.currentOutput;
-            const matchNiri = Quickshell.screens.find(s => s && s.name === name);
-            if (matchNiri)
-                return matchNiri;
+        if (CompositorService.hasWorkspaceBackend && CompositorService.currentOutput) {
+            const name = CompositorService.currentOutput;
+            const match = Quickshell.screens.find(s => s && s.name === name);
+            if (match)
+                return match;
         }
         if (Hyprland.focusedMonitor && Hyprland.focusedMonitor.name) {
             const name = Hyprland.focusedMonitor.name;

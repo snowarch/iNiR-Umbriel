@@ -47,23 +47,20 @@ Item {
     property var  _workOrder:            pinnedApps.slice()
     property int  activeDragVisualIndex: -1
     property bool _dragging:             false
-    readonly property var focusedWindow: CompositorService.isNiri
-        ? (NiriService.windows?.find(window => window.is_focused)
-            ?? NiriService.activeWindow
-            ?? null)
-        : null
-    readonly property int focusedWindowId:
-        Number(root.focusedWindow?.id ?? -1)
+    readonly property var focusedWindow: CompositorService.hasWorkspaceBackend
+        ? CompositorService.activeWindow : null
+    readonly property string focusedWindowId:
+        String(root.focusedWindow?.id ?? "")
 
     function toplevelIsActive(toplevel): bool {
         if (!toplevel)
             return false
-        if (CompositorService.isNiri) {
-            if (root.focusedWindowId < 0)
+        if (CompositorService.hasWorkspaceBackend) {
+            if (root.focusedWindowId.length === 0)
                 return false
-            if (Number(toplevel.niriWindowId ?? -1) === root.focusedWindowId)
+            if (String(toplevel.compositorWindowId ?? "") === root.focusedWindowId)
                 return true
-            const focusedAppId = String(root.focusedWindow?.app_id ?? "").toLowerCase()
+            const focusedAppId = String(root.focusedWindow?.appId ?? "").toLowerCase()
             const toplevelAppId = String(toplevel.appId ?? "").toLowerCase()
             if (focusedAppId.length === 0 || toplevelAppId !== focusedAppId)
                 return false
