@@ -44,6 +44,7 @@ declare -A INIR_ONLY_PATHS=(
 # critical_level: essential (user likely needs), optional (can remove), inir_default (iNiR created)
 declare -A SHARED_PATHS=(
     ["${XDG_CONFIG_HOME}/niri/config.kdl"]="Niri compositor config|niri|essential"
+    ["${XDG_CONFIG_HOME}/umbriel"]="Umbriel compositor config|umbriel|essential"
     ["${XDG_CONFIG_HOME}/matugen"]="iNiR theming templates|python3|optional"
     ["${XDG_CONFIG_HOME}/fuzzel"]="Fuzzel launcher config|fuzzel|optional"
     ["${XDG_CONFIG_HOME}/Kvantum"]="Kvantum Qt theme|kvantummanager|optional"
@@ -67,6 +68,7 @@ declare -A QUICKSHELL_SHARED=(
 declare -A INIR_PACKAGES=(
     ["qs"]="quickshell|Shell framework|inir_only"
     ["niri"]="niri|Wayland compositor|compositor"
+    ["umbriel"]="umbriel-git|Wayland compositor|compositor"
     ["cliphist"]="cliphist|Clipboard history|system_tool"
     ["fuzzel"]="fuzzel|Application launcher|system_tool"
     ["swaylock"]="swaylock|Screen locker|system_tool"
@@ -102,6 +104,14 @@ has_other_quickshell_configs() {
 # Check if user is currently running Niri (would break their session)
 is_running_niri_session() {
     [[ -n "$NIRI_SOCKET" ]] || pgrep -x niri &>/dev/null
+}
+
+is_running_umbriel_session() {
+    [[ -n "$UMBRIEL_SOCKET" ]] || systemctl --user is-active --quiet umbriel-session.target 2>/dev/null || pgrep -x umbriel &>/dev/null
+}
+
+has_other_umbriel_usage() {
+    [[ -f "/usr/share/wayland-sessions/umbriel.desktop" ]] || [[ -d "${XDG_CONFIG_HOME}/umbriel" ]]
 }
 
 # Check if user has other dotfiles that use niri
@@ -244,14 +254,26 @@ get_package_removal_safety() {
             fi
             ;;
         compositor)
-            # Niri - check if user is in a Niri session or uses it elsewhere
-            if is_running_niri_session; then
-                echo "keep_session"
-            elif has_other_niri_usage; then
-                echo "keep_user"
-            else
-                echo "ask"
-            fi
+            case "$cmd" in
+                umbriel)
+                    if is_running_umbriel_session; then
+                        echo "keep_session"
+                    elif has_other_umbriel_usage; then
+                        echo "keep_user"
+                    else
+                        echo "ask"
+                    fi
+                    ;;
+                *)
+                    if is_running_niri_session; then
+                        echo "keep_session"
+                    elif has_other_niri_usage; then
+                        echo "keep_user"
+                    else
+                        echo "ask"
+                    fi
+                    ;;
+            esac
             ;;
         system_tool)
             # Tools that might be used by other apps
@@ -326,9 +348,12 @@ uninstall_create_backup() {
         cp -r "${INIR_CONFIG_DIR}" "$backup_dir/$(basename "$INIR_CONFIG_DIR")"
     fi
 
-    # Backup niri config
+    # Backup compositor configs
     if [[ -f "${XDG_CONFIG_HOME}/niri/config.kdl" ]]; then
         cp "${XDG_CONFIG_HOME}/niri/config.kdl" "$backup_dir/"
+    fi
+    if [[ -d "${XDG_CONFIG_HOME}/umbriel" ]]; then
+        cp -a "${XDG_CONFIG_HOME}/umbriel" "$backup_dir/umbriel-config"
     fi
 
     # Backup user state
@@ -441,7 +466,7 @@ uninstall_handle_shared_configs() {
                 ;;
         esac
 
-        # Special niri override
+        # Active compositor configs are never removal candidates.
         if [[ "$path" == *"niri"* ]]; then
             if is_running_niri_session; then
                 rec="keep"
@@ -450,6 +475,9 @@ uninstall_handle_shared_configs() {
                 rec="keep"
                 reason="has your customizations"
             fi
+        elif [[ "$path" == *"umbriel"* ]] && is_running_umbriel_session; then
+            rec="keep"
+            reason="YOU ARE IN AN UMBRIEL SESSION!"
         fi
 
         _paths+=("$ep")

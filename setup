@@ -960,6 +960,9 @@ show_status() {
     local running_output
     local runtime_dir_display="${runtime_dir:-"(missing)"}"
     local repo_path_display="$installed_repo_path"
+    if [[ -e "${REPO_ROOT}/.git" && -f "${REPO_ROOT}/setup" && -f "${REPO_ROOT}/shell.qml" ]]; then
+        repo_path_display="$REPO_ROOT"
+    fi
     local branch_display="$(setup_current_branch)"
     local tracked_branch="$(setup_tracked_branch)"
     local remote_state="$(setup_remote_state_summary)"

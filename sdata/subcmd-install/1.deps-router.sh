@@ -9,6 +9,17 @@ printf "${STY_CYAN}[$0]: 1. Install dependencies${STY_RST}\n"
 # Route to the appropriate installer based on OS
 #####################################################################################
 
+_install_target="$(inir_install_compositor_service 2>/dev/null || true)"
+if [[ "$_install_target" == "umbriel-session.target" && "$OS_GROUP_ID" != "arch" ]]; then
+  if command -v umbriel >/dev/null 2>&1; then
+    tui_warn "Umbriel is already installed, but automated non-Arch dependency routing is not compositor-safe yet."
+  else
+    tui_warn "Automatic Umbriel compositor installation is currently supported only on Arch-based systems."
+  fi
+  tui_info "Install Umbriel and the runtime dependencies for your distro, then rerun: ./setup install --compositor umbriel --skip-deps"
+  return 1
+fi
+
 case "$OS_GROUP_ID" in
   arch)
     printf "${STY_GREEN}Using Arch Linux installer${STY_RST}\n"
