@@ -1304,6 +1304,14 @@ if ! TEST_HOME="$launcher_sync_root/home" TEST_REPO="$runtime_root" \
 fi
 rm -rf "$launcher_sync_root"
 
+brightness_owner="$runtime_root/services/Brightness.qml"
+if ! grep -Fq 'DRM connector:' "$brightness_owner" \
+        || ! grep -Fq 'candidate.connector' "$brightness_owner" \
+        || ! grep -Fq 'screenName.length > 0' "$brightness_owner"; then
+    printf 'FAIL: brightness service lost DRM connector correlation for external monitors\n' >&2
+    exit 1
+fi
+
 step "application launch environment"
 # The compositor owns DISPLAY/WAYLAND_DISPLAY and its IPC socket. App launches may
 # refresh them from the live user-manager snapshot, but must never infer sockets.

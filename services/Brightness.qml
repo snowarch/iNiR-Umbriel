@@ -160,9 +160,20 @@ Singleton {
             onRead: data => {
                 if (data.startsWith("Display ")) {
                     const lines = data.split("\n").map(l => l.trim());
+                    const monitorLine = lines.find(l => l.startsWith("Monitor:")) ?? ""
+                    const busLine = lines.find(l => l.startsWith("I2C bus:")) ?? ""
+                    const connectorLine = lines.find(l => l.startsWith("DRM connector:")) ?? ""
+                    const monitorParts = monitorLine.split(":")
+                    const busNum = busLine.includes("/dev/i2c-")
+                        ? busLine.split("/dev/i2c-")[1].trim() : ""
+                    const connector = connectorLine.includes(":")
+                        ? connectorLine.substring(connectorLine.indexOf(":") + 1).trim().replace(/^card\d+-/, "") : ""
+                    if (!busNum)
+                        return
                     root._ddcNext.push({
-                        model: lines.find(l => l.startsWith("Monitor:")).split(":")[2],
-                        busNum: lines.find(l => l.startsWith("I2C bus:")).split("/dev/i2c-")[1]
+                        model: monitorParts.length > 2 ? monitorParts[2].trim() : "",
+                        connector: connector,
+                        busNum: busNum
                     });
                 }
             }
@@ -187,14 +198,24 @@ Singleton {
         id: monitor
 
         required property ShellScreen screen
-        readonly property bool isDdc: {
-            const match = root.ddcMonitors.find(m => screen?.model?.includes(m.model) && !root.monitors.slice(0, root.monitors.indexOf(this)).some(mon => mon.busNum === m.busNum));
-            return !!match;
+        function ddcMatch(): var {
+            const screenName = String(screen?.name ?? "")
+            const screenModel = String(screen?.model ?? "")
+            const usedBuses = new Set(root.monitors
+                .slice(0, root.monitors.indexOf(this))
+                .map(mon => String(mon.busNum ?? ""))
+                .filter(bus => bus.length > 0))
+            return root.ddcMonitors.find(candidate => {
+                if (usedBuses.has(String(candidate.busNum ?? "")))
+                    return false
+                if (screenName.length > 0 && String(candidate.connector ?? "") === screenName)
+                    return true
+                const model = String(candidate.model ?? "")
+                return model.length > 0 && screenModel.length > 0 && screenModel.includes(model)
+            }) ?? null
         }
-        readonly property string busNum: {
-            const match = root.ddcMonitors.find(m => screen?.model?.includes(m.model) && !root.monitors.slice(0, root.monitors.indexOf(this)).some(mon => mon.busNum === m.busNum));
-            return match?.busNum ?? "";
-        }
+        readonly property bool isDdc: monitor.ddcMatch() !== null
+        readonly property string busNum: monitor.ddcMatch()?.busNum ?? ""
         property int rawMaxBrightness: 100
         property real brightness
         property real brightnessMultiplier: 1.0
