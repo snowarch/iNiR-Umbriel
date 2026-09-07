@@ -5,9 +5,9 @@ iNiR compatibility work for the [Umbriel](https://github.com/noctalia-dev/umbrie
 > **Status:** experimental port, not a complete or stable compatibility target yet. This repository tracks only the Umbriel work. The established Niri edition remains in [snowarch/iNiR](https://github.com/snowarch/iNiR) and is maintained separately.
 
 **Last reviewed:** 2026-09-06
-**Published checkpoint:** `06b56c7e`
+**Current checkpoint:** `49fff518`
 
-**Verified locally after that checkpoint:** native Umbriel toplevel/output capture, shared screenshot CLI, Waffle Task View focus/close, Material ii Task View routing to Umbriel overview, and Umbriel portal dependency/doctor coverage. These remain development work until committed.
+**Verified locally after that checkpoint:** no uncommitted compatibility changes; the checks below describe the current tree.
 
 ## What works today
 
@@ -26,6 +26,11 @@ iNiR compatibility work for the [Umbriel](https://github.com/noctalia-dev/umbrie
 - Shared AltSwitcher, Waffle Task View and WorkspaceStrip using the compositor-neutral window/workspace model
 - Compositor-neutral cached window previews, using exact Umbriel foreign-toplevel captures without touching the clipboard
 - Semantic `inir` IPC and screenshot commands recover the active compositor session when invoked from a TTY/support shell
+- Native `wf-recorder` capture resolves the focused Umbriel output correctly
+- Idle/DPMS, hibernate monitor power, logout and shared media/output routing use compositor-aware session state
+- Shared keyboard layout, taskbar, widget power and per-monitor workspace consumers use the compositor-neutral model
+- Region capture, OCR and recording run under Umbriel; snap-to-window remains disabled until Umbriel exposes viewport-local window geometry
+- Umbriel desktop portal is installed/repaired explicitly on Arch/CachyOS and checked by Doctor
 
 This list describes implemented and tested paths only. Other iNiR surfaces may still contain Niri-specific assumptions or may not have been validated under Umbriel yet.
 
