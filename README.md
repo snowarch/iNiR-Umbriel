@@ -31,6 +31,7 @@ iNiR compatibility work for the [Umbriel](https://github.com/noctalia-dev/umbrie
 - Shared keyboard layout, taskbar, widget power and per-monitor workspace consumers use the compositor-neutral model
 - Region capture, OCR and recording run under Umbriel; snap-to-window remains disabled until Umbriel exposes viewport-local window geometry
 - Umbriel desktop portal is installed/repaired explicitly on Arch/CachyOS and checked by Doctor
+- External monitor brightness works through DDC/CI using DRM connector correlation when Wayland screen model metadata is unavailable
 
 This list describes implemented and tested paths only. Other iNiR surfaces may still contain Niri-specific assumptions or may not have been validated under Umbriel yet.
 
