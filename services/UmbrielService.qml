@@ -287,6 +287,10 @@ Singleton {
         return sendAction("workspace-next")
     }
 
+    function quitSession(): bool {
+        return sendAction("session-quit")
+    }
+
     function powerOffMonitors(): bool {
         return sendAction("dpms-off")
     }

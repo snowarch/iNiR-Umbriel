@@ -671,6 +671,16 @@ Singleton {
         return root.isUmbriel ? UmbrielScratchpad.restoreWindow(windowId) : false
     }
 
+    function quitSession(): bool {
+        if (root.isUmbriel)
+            return UmbrielService.quitSession()
+        if (root.isNiri) {
+            NiriService.quit()
+            return true
+        }
+        return false
+    }
+
     function powerOffMonitors() {
         if (isNiri)
             return NiriService.powerOffMonitors()
