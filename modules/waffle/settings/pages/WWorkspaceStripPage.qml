@@ -197,12 +197,12 @@ WSettingsPage {
         }
 
         WSettingsSwitch {
-            enabled: CompositorService.isNiri
+            enabled: CompositorService.hasWorkspaceBackend
             label: Translation.tr("Per-monitor workspaces")
             icon: "desktop"
-            description: CompositorService.isNiri
-                ? Translation.tr("Each screen shows only its own Niri workspaces")
-                : Translation.tr("Only available on Niri")
+            description: CompositorService.hasWorkspaceBackend
+                ? Translation.tr("Each screen shows only its own compositor workspaces")
+                : Translation.tr("Unavailable on this compositor")
             checked: Config.options?.workspaceStrip?.perMonitor ?? true
             onCheckedChanged: Config.setNestedValue("workspaceStrip.perMonitor", checked)
         }

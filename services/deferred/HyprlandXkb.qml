@@ -31,12 +31,11 @@ Singleton {
         }
     }
 
-    function syncFromNiri() {
-        if (!CompositorService.isNiri || typeof NiriService === "undefined")
+    function syncFromCompositor() {
+        if (!CompositorService.hasWorkspaceBackend)
             return;
-        const names = NiriService.keyboardLayoutNames || [];
-        root.layoutCodes = names;
-        root.currentLayoutName = NiriService.getCurrentKeyboardLayoutName();
+        root.layoutCodes = CompositorService.keyboardLayoutNames || [];
+        root.currentLayoutName = CompositorService.currentKeyboardLayoutName || "";
     }
 
     // Get the layout code from the base.lst file by grabbing the line with the current layout name
@@ -132,14 +131,11 @@ Singleton {
     }
 
     Connections {
-        target: NiriService
-        enabled: CompositorService.isNiri
-        function onKeyboardLayoutNamesChanged() { root.syncFromNiri(); }
-        function onCurrentKeyboardLayoutIndexChanged() { root.syncFromNiri(); }
+        target: CompositorService
+        enabled: CompositorService.hasWorkspaceBackend
+        function onKeyboardLayoutNamesChanged() { root.syncFromCompositor(); }
+        function onCurrentKeyboardLayoutIndexChanged() { root.syncFromCompositor(); }
     }
 
-    Component.onCompleted: {
-        if (CompositorService.isNiri)
-            root.syncFromNiri();
-    }
+    Component.onCompleted: root.syncFromCompositor()
 }

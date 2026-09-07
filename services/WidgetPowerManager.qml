@@ -65,7 +65,7 @@ Singleton {
 
     function _fullscreenForOutput(outputName: string): bool {
         const scopedOutput = String(outputName ?? "");
-        if (scopedOutput.length === 0 || !CompositorService.isNiri)
+        if (scopedOutput.length === 0 || !CompositorService.hasWorkspaceBackend)
             return GameMode.hasVisibleFullscreenWindow;
         return GameMode.hasFullscreenOnOutput(scopedOutput);
     }

@@ -258,10 +258,10 @@ ContentPage {
 
             ConfigSwitch {
                 text: Translation.tr("Per-monitor workspaces")
-                description: CompositorService.isNiri
-                    ? Translation.tr("Each screen shows only its own Niri workspaces")
-                    : Translation.tr("Only available on Niri")
-                enabled: CompositorService.isNiri
+                description: CompositorService.hasWorkspaceBackend
+                    ? Translation.tr("Each screen shows only its own compositor workspaces")
+                    : Translation.tr("Unavailable on this compositor")
+                enabled: CompositorService.hasWorkspaceBackend
                 checked: Config.options?.workspaceStrip?.perMonitor ?? true
                 onCheckedChanged: Config.setNestedValue("workspaceStrip.perMonitor", checked)
             }
