@@ -117,8 +117,8 @@
 
 # Screenshots
 "Print" = { action = "spawn:inir region menu", repeat = false }
-"Ctrl+Print" = { action = "spawn:inir umbriel-screenshot screen", repeat = false }
-"Alt+Print" = { action = "spawn:inir umbriel-screenshot window", repeat = false }
+"Ctrl+Print" = { action = "spawn:inir screenshot screen", repeat = false }
+"Alt+Print" = { action = "spawn:inir screenshot window", repeat = false }
 
 # Hardware keys
 "XF86AudioRaiseVolume" = { action = "spawn:inir audio volumeUp", allow_when_locked = true }

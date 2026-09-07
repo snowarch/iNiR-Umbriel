@@ -338,7 +338,7 @@ Singleton {
         
         _log("[WindowPreviewService] Capturing", idsToCapture.length, "windows")
         capturing = true
-        GlobalStates.windowPreviewCaptureActive = true
+        GlobalStates.windowPreviewCaptureActive = CompositorService.isNiri
         initialCapturesDone = true
         if (CompositorService.isNiri)
             Cliphist.suppressRefresh = true
@@ -367,7 +367,7 @@ Singleton {
         
         _log("[WindowPreviewService] Force capturing all", windows.length, "windows")
         capturing = true
-        GlobalStates.windowPreviewCaptureActive = true
+        GlobalStates.windowPreviewCaptureActive = CompositorService.isNiri
         if (CompositorService.isNiri)
             Cliphist.suppressRefresh = true
 

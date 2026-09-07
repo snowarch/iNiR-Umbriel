@@ -34,8 +34,8 @@ PopupWindow {
     Timer {
         id: previewRefreshTimer
         // The popup can render an existing cached frame immediately. Delay the
-        // invasive Niri screenshot-window refresh until the hover is clearly
-        // intentional, so a normal dock click never races the user's next paste.
+        // Delay refresh until the hover is intentional. Niri captures can touch
+        // the clipboard; Umbriel uses its native foreign-toplevel capture source.
         interval: 260
         repeat: false
         onTriggered: {

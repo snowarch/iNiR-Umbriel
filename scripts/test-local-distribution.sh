@@ -484,8 +484,8 @@ umbriel_binds = (umbriel_root / "config.d/70-binds.toml").read_text(encoding="ut
 for fragment in [
     '"Mod+Tab" = { action = "overview-toggle", repeat = false }',
     '"Mod+Q" = { action = "spawn:inir close-window", repeat = false }',
-    '"Ctrl+Print" = { action = "spawn:inir umbriel-screenshot screen", repeat = false }',
-    '"Alt+Print" = { action = "spawn:inir umbriel-screenshot window", repeat = false }',
+    '"Ctrl+Print" = { action = "spawn:inir screenshot screen", repeat = false }',
+    '"Alt+Print" = { action = "spawn:inir screenshot window", repeat = false }',
 ]:
     if fragment not in umbriel_binds:
         raise SystemExit(f"FAIL: Umbriel fresh-install bind missing: {fragment}")
@@ -1436,6 +1436,24 @@ if ! grep -Fq 'previewRefreshTimer' "$runtime_root/modules/dock/DockPreview.qml"
     printf 'FAIL: dock clicks can race window-preview capture and user paste\n' >&2
     exit 1
 fi
+if ! grep -Fq 'REQUIRED_AUR_PACKAGES+=(umbriel-git xdg-desktop-portal-umbriel-git)' "$runtime_root/sdata/dist-arch/install-deps.sh"; then
+    printf 'FAIL: Umbriel Arch installs can regress without the native screen-sharing portal\n' >&2
+    exit 1
+fi
+
+if ! grep -Fq 'hasNativeToplevelCapture: root.isUmbriel' "$runtime_root/services/CompositorService.qml" \
+        || ! grep -Fq 'grim -T "$window_id" "$path"' "$runtime_root/scripts/screenshot.sh" \
+        || ! grep -Fq 'spawn:inir screenshot window' "$runtime_root/defaults/umbriel/config.d/70-binds.toml"; then
+    printf 'FAIL: Umbriel native toplevel capture can regress to a compositor-specific screenshot workaround\n' >&2
+    exit 1
+fi
+if [[ ! -x "$runtime_root/scripts/screenshot.sh" ]] \
+        || ! grep -Fq 'import_compositor_session_env' "$runtime_root/scripts/inir" \
+        || ! grep -A70 -F 'run_ipc_target_command() {' "$runtime_root/scripts/inir" | grep -Fq 'import_compositor_session_env'; then
+    printf 'FAIL: compositor capture/IPC can regress when invoked outside the inherited Wayland environment\n' >&2
+    exit 1
+fi
+
 if ! grep -Fq 'windowPreviewCaptureActive' "$runtime_root/services/Notifications.qml" \
         || ! grep -Fq 'paste the image from the clipboard' "$runtime_root/services/Notifications.qml"; then
     printf 'FAIL: internal Niri preview screenshot notifications are not suppressed safely\n' >&2

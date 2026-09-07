@@ -133,10 +133,10 @@ Item {
                     columnSpacing: 4
 
                     ActionTile {
-                        visible: CompositorService.isNiri
+                        visible: CompositorService.canCaptureScreen
                         tileIcon: "screenshot"
                         label: Translation.tr("Screenshot")
-                        onClicked: Quickshell.execDetached(["niri", "msg", "action", "screenshot"])
+                        onClicked: Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "screenshot", "screen"])
                     }
                     ActionTile {
                         tileIcon: "screenshot_region"
@@ -160,10 +160,10 @@ Item {
                         onClicked: Quickshell.execDetached(["niri", "msg", "action", "pick-color"])
                     }
                     ActionTile {
-                        visible: CompositorService.isNiri
+                        visible: CompositorService.canCaptureWindowPreview
                         tileIcon: "screenshot_monitor"
                         label: Translation.tr("Window")
-                        onClicked: Quickshell.execDetached(["niri", "msg", "action", "screenshot-window"])
+                        onClicked: Quickshell.execDetached([Quickshell.shellPath("scripts/inir"), "screenshot", "window"])
                     }
                 }
             }

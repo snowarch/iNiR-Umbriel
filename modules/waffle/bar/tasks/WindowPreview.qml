@@ -108,7 +108,7 @@ Button {
                     opacity: 0.5
                 }
 
-                // Window preview using WindowPreviewService (works with Niri)
+                // Window preview using the compositor-aware WindowPreviewService
                 Image {
                     id: previewImage
                     anchors.fill: parent

@@ -126,7 +126,7 @@ EOF
 
     cat <<'EOF'
 Runtime:
-  start, stop, run, restart, kill, terminal, browser, close-window, umbriel-screenshot, colorpicker
+  start, stop, run, restart, kill, terminal, browser, close-window, screenshot, colorpicker
 
 Maintenance (delegates to setup):
   install, reinstall, update, doctor, status, migrate, rollback, my-changes, uninstall
@@ -1741,6 +1741,47 @@ apply_gpu_policy() {
     fi
 }
 
+import_compositor_session_env() {
+    local _qs_sys_env
+    _qs_sys_env="$(_get_systemd_user_env)"
+    if [[ -n "$_qs_sys_env" ]]; then
+        local _qs_var _qs_val
+        for _qs_var in WAYLAND_DISPLAY NIRI_SOCKET UMBRIEL_SOCKET DISPLAY \
+                       XDG_RUNTIME_DIR XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP DESKTOP_SESSION \
+                       XCURSOR_THEME XCURSOR_SIZE \
+                       LANG LC_ALL XDG_MENU_PREFIX \
+                       ELECTRON_OZONE_PLATFORM_HINT QT_STYLE_OVERRIDE \
+                       GDK_BACKEND; do
+            if [[ -z "${!_qs_var:-}" ]]; then
+                _qs_val="$(grep "^${_qs_var}=" <<< "$_qs_sys_env" | head -1 | cut -d= -f2- || true)"
+                [[ -n "$_qs_val" ]] && export "${_qs_var}=${_qs_val}"
+            fi
+        done
+
+        local _qs_sys_path
+        _qs_sys_path="$(grep '^PATH=' <<< "$_qs_sys_env" | head -1 | cut -d= -f2- || true)"
+        if [[ -n "$_qs_sys_path" && "$_qs_sys_path" != "$PATH" ]]; then
+            local _qs_merged="$_qs_sys_path" _qs_p
+            for _qs_p in /usr/local/bin /usr/bin; do
+                case ":${_qs_merged}:" in
+                    *":${_qs_p}:"*) ;;
+                    *) _qs_merged="${_qs_merged}:${_qs_p}" ;;
+                esac
+            done
+            export PATH="$_qs_merged"
+        fi
+    fi
+
+    if [[ -n "${UMBRIEL_SOCKET:-}" ]]; then
+        unset NIRI_SOCKET
+        export XDG_CURRENT_DESKTOP=umbriel
+        export XDG_SESSION_DESKTOP=umbriel
+        export XDG_SESSION_TYPE=wayland
+    elif [[ -n "${NIRI_SOCKET:-}" ]]; then
+        unset UMBRIEL_SOCKET
+    fi
+}
+
 apply_qt_runtime_env() {
     # Must run before Qt reads env at QGuiApplication construction.
     apply_gpu_policy
@@ -1790,52 +1831,7 @@ apply_qt_runtime_env() {
         true
     fi
 
-    # Import compositor-published session values from the user manager for
-    # manual/recovery invocations. Never probe filesystem sockets to manufacture them.
-    local _qs_sys_env
-    _qs_sys_env="$(_get_systemd_user_env)"
-    if [[ -n "$_qs_sys_env" ]]; then
-        local _qs_var _qs_val
-        for _qs_var in WAYLAND_DISPLAY NIRI_SOCKET UMBRIEL_SOCKET DISPLAY \
-                       XDG_SESSION_TYPE XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP DESKTOP_SESSION \
-                       XCURSOR_THEME XCURSOR_SIZE \
-                       LANG LC_ALL XDG_MENU_PREFIX \
-                       ELECTRON_OZONE_PLATFORM_HINT QT_STYLE_OVERRIDE \
-                       GDK_BACKEND; do
-            if [[ -z "${!_qs_var:-}" ]]; then
-                _qs_val="$(grep "^${_qs_var}=" <<< "$_qs_sys_env" | head -1 | cut -d= -f2- || true)"
-                [[ -n "$_qs_val" ]] && export "${_qs_var}=${_qs_val}"
-            fi
-        done
-        # Use the manager's rich PATH (set by compositor + PAM login) which
-        # includes user dirs (~/.local/bin, flatpak exports, nvm, pnpm, etc.)
-        # absent from the minimal systemd unit PATH. ShellExec repeats this
-        # synchronization at user-app launch time to avoid a stale snapshot.
-        local _qs_sys_path
-        _qs_sys_path="$(grep '^PATH=' <<< "$_qs_sys_env" | head -1 | cut -d= -f2- || true)"
-        if [[ -n "$_qs_sys_path" && "$_qs_sys_path" != "$PATH" ]]; then
-            local _qs_merged="$_qs_sys_path"
-            for _qs_p in /usr/local/bin /usr/bin; do
-                case ":${_qs_merged}:" in
-                    *":${_qs_p}:"*) ;;
-                    *) _qs_merged="${_qs_merged}:${_qs_p}" ;;
-                esac
-            done
-            export PATH="$_qs_merged"
-        fi
-    fi
-
-    # Nested compositors inherit their parent's environment. Once an Umbriel
-    # socket is present, its child session is authoritative and the parent Niri
-    # socket must not leak into Quickshell or applications launched from it.
-    if [[ -n "${UMBRIEL_SOCKET:-}" ]]; then
-        unset NIRI_SOCKET
-        export XDG_CURRENT_DESKTOP=umbriel
-        export XDG_SESSION_DESKTOP=umbriel
-        export XDG_SESSION_TYPE=wayland
-    elif [[ -n "${NIRI_SOCKET:-}" ]]; then
-        unset UMBRIEL_SOCKET
-    fi
+    import_compositor_session_env
 
     # Niri keeps its app policy in KDL; Umbriel publishes the equivalent values
     # through the session environment imported above.
@@ -3209,6 +3205,7 @@ run_ipc_target_command() {
     fi
 
     resolve_config_dir
+    import_compositor_session_env
     if ! ensure_running_instance_for_ipc "$config_dir" "${1:-}"; then
         echo "Timed out waiting for iNiR to start" >&2
         exit 1
@@ -3827,6 +3824,10 @@ case "$command_name" in
         resolve_config_dir
         run_runtime_script "$config_dir" "scripts/close-window.sh"
         ;;
+    screenshot)
+        resolve_config_dir
+        run_runtime_script "$config_dir" "scripts/screenshot.sh" "$@"
+        ;;
     umbriel-screenshot)
         resolve_config_dir
         run_runtime_script "$config_dir" "scripts/umbriel-screenshot.sh" "$@"
@@ -3876,6 +3877,7 @@ case "$command_name" in
             exit 1
         fi
         resolve_config_dir
+        import_compositor_session_env
         if ! ensure_running_instance_for_ipc "$config_dir" "${2:-}"; then
             echo "Timed out waiting for iNiR to start" >&2
             exit 1
