@@ -5,7 +5,7 @@ iNiR compatibility work for the [Umbriel](https://github.com/noctalia-dev/umbrie
 > **Status:** experimental port, not a complete or stable compatibility target yet. This repository tracks only the Umbriel work. The established Niri edition remains in [snowarch/iNiR](https://github.com/snowarch/iNiR) and is maintained separately.
 
 **Last reviewed:** 2026-09-06
-**Current checkpoint:** `49fff518`
+**Current checkpoint:** `a096641f`
 
 **Verified locally after that checkpoint:** no uncommitted compatibility changes; the checks below describe the current tree.
 
