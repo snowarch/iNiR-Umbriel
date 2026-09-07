@@ -99,7 +99,9 @@ WSettingsPage {
                         WText {
                             id: compLabel
                             anchors.centerIn: parent
-                            text: CompositorService.isNiri ? "Niri" : (CompositorService.isHyprland ? "Hyprland" : "Unknown")
+                            text: CompositorService.isUmbriel ? "Umbriel"
+                                : CompositorService.isNiri ? "Niri"
+                                : (CompositorService.isHyprland ? "Hyprland" : "Unknown")
                             font.pixelSize: Looks.font.pixelSize.small
                             color: Looks.colors.subfg
                         }

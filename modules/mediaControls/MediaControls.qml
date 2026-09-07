@@ -40,8 +40,8 @@ Scope {
     property real popupRounding: Appearance.zzzEverywhere ? Appearance.zzz.panelRadius
         : Appearance.inirEverywhere ? Appearance.inir.roundingLarge : Appearance.rounding.large
     readonly property bool visualizerActive: mediaControlsLoader.active && MprisController.isPlaying
-    property var focusedScreen: GlobalStates.focusedScreen ?? (CompositorService.isNiri
-        ? Quickshell.screens.find(s => s.name === NiriService.currentOutput) ?? GlobalStates.primaryScreen
+    property var focusedScreen: GlobalStates.focusedScreen ?? (CompositorService.hasWorkspaceBackend
+        ? Quickshell.screens.find(s => s.name === CompositorService.currentOutput) ?? GlobalStates.primaryScreen
         : Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name) ?? GlobalStates.primaryScreen)
     property var targetScreens: screensFromList(
         Config.options?.media?.screenList ?? [])

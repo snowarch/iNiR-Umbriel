@@ -67,10 +67,16 @@ Singleton {
         const cmd = ["/usr/bin/swayidle", "-w"]
         const lockBeforeSleep = Config.options?.idle?.lockBeforeSleep !== false
 
-        if (screenOffTimeout > 0 && CompositorService.isNiri) {
-            const inir = StringUtils.shellSingleQuoteEscape(root.launcherPath);
-            const offCmd = `'${inir}' brightness sleepBegin; /usr/bin/niri msg action power-off-monitors`;
-            const resumeCmd = `/usr/bin/niri msg action power-on-monitors && /usr/bin/sleep 0.5 && '${inir}' brightness restoreAfterWake`;
+        if (screenOffTimeout > 0 && CompositorService.hasWorkspaceBackend) {
+            const inir = StringUtils.shellSingleQuoteEscape(root.launcherPath)
+            const powerOff = CompositorService.isUmbriel
+                ? "/usr/bin/umbriel msg dpms-off"
+                : "/usr/bin/niri msg action power-off-monitors"
+            const powerOn = CompositorService.isUmbriel
+                ? "/usr/bin/umbriel msg dpms-on"
+                : "/usr/bin/niri msg action power-on-monitors"
+            const offCmd = `'${inir}' brightness sleepBegin; ${powerOff}`
+            const resumeCmd = `${powerOn} && /usr/bin/sleep 0.5 && '${inir}' brightness restoreAfterWake`
             cmd.push("timeout", screenOffTimeout.toString(), offCmd, "resume", resumeCmd)
         }
 
