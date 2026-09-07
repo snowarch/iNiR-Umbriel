@@ -31,7 +31,8 @@ Scope {
     signal closeRequested()
 
     function refreshCachedPreviews(): void {
-        if (!(Config.options?.workspaceStrip?.showPreviews ?? true) || !CompositorService.isNiri)
+        if (!(Config.options?.workspaceStrip?.showPreviews ?? true)
+                || !CompositorService.canCaptureWindowPreview)
             return
         WindowPreviewService.initialize()
         WindowPreviewService.captureForTaskView()
@@ -198,7 +199,8 @@ Scope {
                 && (chromeStyle === "island"
                     || (chromeStyle === "auto"
                         && (Config.options?.bar?.appearanceStyle ?? "classic") === "pill"))
-            readonly property bool perMonitor: (Config.options?.workspaceStrip?.perMonitor ?? true) && CompositorService.isNiri
+            readonly property bool perMonitor: (Config.options?.workspaceStrip?.perMonitor ?? true)
+                && CompositorService.hasWorkspaceBackend
             readonly property bool scrollNavigation: Config.options?.workspaceStrip?.scrollNavigation ?? false
             readonly property bool scrollNavigationSwitchWorkspace: Config.options?.workspaceStrip?.scrollNavigationSwitchWorkspace ?? true
             readonly property int scrollNavigationDebounceMs: Math.max(50, Config.options?.workspaceStrip?.scrollNavigationDebounceMs ?? 180)
@@ -268,28 +270,27 @@ Scope {
             readonly property bool selIsMedia: _hoveredKey === mediaKey
 
             readonly property var outputWorkspaces: {
-                if (CompositorService.isNiri) {
+                if (CompositorService.hasWorkspaceBackend) {
                     const ws = perMonitor && screenName.length > 0
-                        ? (NiriService.allWorkspaces ?? []).filter(w => w.output === screenName)
-                        : (NiriService.currentOutputWorkspaces ?? [])
-                    return ws.slice().sort((a, b) => (a?.idx ?? 0) - (b?.idx ?? 0))
+                        ? (CompositorService.workspaces ?? []).filter(w => w.output === screenName)
+                        : (CompositorService.currentOutputWorkspaces ?? [])
+                    return ws.slice().sort((a, b) =>
+                        Number(a?.index ?? a?.idx ?? 0) - Number(b?.index ?? b?.idx ?? 0))
                 }
                 if (CompositorService.isHyprland)
                     return (Hyprland.workspaces.values ?? []).slice().sort((a, b) => (a?.id ?? 0) - (b?.id ?? 0))
                 return []
             }
 
-            // Niri-only: bucket every window by its workspace id ONCE per window
-            // list change, instead of each card filtering the full window list on
-            // its own. Cards read their slice from this map by workspace id, which
-            // keeps the rail O(windows) on refresh rather than O(workspaces×windows).
+            // Bucket once per compositor window update so each card reads only
+            // the windows belonging to its workspace.
             readonly property var windowsByWorkspace: {
-                if (!CompositorService.isNiri) return ({})
+                if (!CompositorService.hasWorkspaceBackend) return ({})
                 const map = ({})
-                const wins = NiriService.windows ?? []
+                const wins = CompositorService.windows ?? []
                 for (let i = 0; i < wins.length; i++) {
                     const w = wins[i]
-                    const wid = w?.workspace_id ?? 0
+                    const wid = String(w?.workspaceId ?? w?.workspace_id ?? "")
                     if (!map[wid]) map[wid] = []
                     map[wid].push(w)
                 }
@@ -320,9 +321,9 @@ Scope {
             }
 
             function keyFor(ws, index: int): int {
-                const id = ws?.id ?? 0
-                if (id > 0) return id
-                return (CompositorService.isNiri ? (ws?.idx ?? index + 1) : (ws?.id ?? index + 1))
+                if (CompositorService.hasWorkspaceBackend)
+                    return Number(ws?.index ?? ws?.idx ?? index + 1)
+                return Number(ws?.id ?? index + 1)
             }
 
             function dismiss(): void {
@@ -332,13 +333,8 @@ Scope {
             }
 
             function switchWorkspace(ws, index: int): void {
-                if (CompositorService.isNiri) {
-                    // Address the workspace by its stable id so a card on a
-                    // non-focused monitor switches the right workspace; a niri
-                    // Index reference resolves against the focused output only.
-                    const id = ws?.id ?? 0
-                    if (id > 0) NiriService.switchToWorkspaceById(id)
-                    else NiriService.switchToWorkspace(ws?.idx ?? index + 1)
+                if (CompositorService.hasWorkspaceBackend) {
+                    CompositorService.switchWorkspace(ws)
                 } else if (CompositorService.isHyprland) {
                     Hyprland.dispatch(`workspace ${ws?.id ?? index + 1}`)
                 }
@@ -380,10 +376,8 @@ Scope {
                 for (let wi = 0; wi < list.length; wi++) {
                     if (keyFor(list[wi], wi) === newKey) {
                         const ws = list[wi]
-                        if (CompositorService.isNiri) {
-                            const id = ws?.id ?? 0
-                            if (id > 0) NiriService.switchToWorkspaceById(id)
-                            else NiriService.switchToWorkspace(ws?.idx ?? (wi + 1))
+                        if (CompositorService.hasWorkspaceBackend) {
+                            CompositorService.switchWorkspace(ws)
                         } else if (CompositorService.isHyprland) {
                             Hyprland.dispatch(`workspace ${ws?.id ?? (wi + 1)}`)
                         }
@@ -395,7 +389,7 @@ Scope {
             // Focus a specific window (and switch to its workspace), then close.
             function focusWindow(win): void {
                 if (win === null) return
-                if (CompositorService.isNiri) NiriService.focusWindow(win.id)
+                if (CompositorService.hasWorkspaceBackend) CompositorService.focusWindow(win.id)
                 else if (CompositorService.isHyprland)
                     Hyprland.dispatch(`focuswindow address:0x${(win.address ?? "").replace(/^0x/, "")}`)
                 dismiss()
@@ -405,7 +399,7 @@ Scope {
             // dismissed in a row.
             function closeWindow(win): void {
                 if (win === null) return
-                if (CompositorService.isNiri) NiriService.closeWindow(win.id)
+                if (CompositorService.hasWorkspaceBackend) CompositorService.closeWindow(win.id)
                 else if (CompositorService.isHyprland)
                     Hyprland.dispatch(`closewindow address:0x${(win.address ?? "").replace(/^0x/, "")}`)
             }
@@ -707,7 +701,8 @@ Scope {
                     backdropScreenHeight: stripWindow.screenHeight
                     showAppIcons: stripWindow.showAppIcons
                     showPreviews: stripWindow.showPreviews
-                    dragProxy: windowDragProxy
+                    dragProxy: CompositorService.canMoveWindowToWorkspaceById
+                        || CompositorService.isHyprland ? windowDragProxy : null
                     wsName: sel?.cardWsName ?? ""
                     wsIndex: sel?.cardWsIndex ?? 0
                     focusedTitle: sel?.cardFocusedTitle ?? ""
@@ -1066,8 +1061,8 @@ Scope {
                                     islandChrome: stripWindow.islandChrome
                                     showPreviews: stripWindow.showPreviews
                                     showAppIcons: stripWindow.showAppIcons
-                                    injectedWindows: CompositorService.isNiri
-                                        ? (stripWindow.windowsByWorkspace[slot.modelData?.id ?? 0] ?? [])
+                                    injectedWindows: CompositorService.hasWorkspaceBackend
+                                        ? (stripWindow.windowsByWorkspace[String(slot.modelData?.id ?? "")] ?? [])
                                         : null
 
                                     width: slot.isSelected ? stripWindow.cardSelW : stripWindow.cardBaseW

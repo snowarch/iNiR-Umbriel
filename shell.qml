@@ -431,14 +431,17 @@ ShellRoot {
         function _isWaffle(): bool { return (Config.options?.panelFamily ?? "ii") === "waffle" }
         function toggle(): void {
             if (_isWaffle()) { GlobalStates.waffleTaskViewOpen = !GlobalStates.waffleTaskViewOpen; return }
+            if (CompositorService.isUmbriel) { CompositorService.toggleOverview(); return }
             if (CompositorService.isNiri) GlobalStates.toggleOrbit("")
         }
         function close(): void {
             if (_isWaffle()) { GlobalStates.waffleTaskViewOpen = false; return }
+            if (CompositorService.isUmbriel) { CompositorService.setNativeOverview(false); return }
             if (GlobalStates.overviewMode === "orbit") GlobalStates.closeOverview()
         }
         function open(): void {
             if (_isWaffle()) { GlobalStates.waffleTaskViewOpen = true; return }
+            if (CompositorService.isUmbriel) { CompositorService.setNativeOverview(true); return }
             if (CompositorService.isNiri) GlobalStates.openOrbit("")
         }
     }

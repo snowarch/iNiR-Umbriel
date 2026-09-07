@@ -45,7 +45,7 @@ PanelSurface {
     signal windowCloseRequested(var win)
 
     readonly property bool _zzz: Appearance.zzzEverywhere
-    readonly property bool _isNiri: CompositorService.isNiri
+    readonly property bool _hasWorkspaceBackend: CompositorService.hasWorkspaceBackend
 
     // Stable row identity. NiriService reassigns `windows` on every real event
     // (title change — media players retitle constantly —, focus, layout), and
@@ -57,7 +57,8 @@ PanelSurface {
     // actually changes.
     property var _rowKeys: []
     onWsWindowsChanged: {
-        const next = (wsWindows ?? []).map((w, i) => _isNiri ? (w?.id ?? -(i + 1)) : i)
+        const next = (wsWindows ?? []).map((w, i) => _hasWorkspaceBackend
+            ? String(w?.id ?? `fallback-${i}`) : String(i))
         if (next.join(",") !== _rowKeys.join(","))
             _rowKeys = next
     }
@@ -288,23 +289,24 @@ PanelSurface {
 
                         // Live lookup by id so title/focus updates flow into the
                         // existing delegate instead of recreating it.
-                        readonly property var win: detail._isNiri
-                            ? (detail.wsWindows.find(w => (w?.id ?? -1) === row.modelData)
+                        readonly property var win: detail._hasWorkspaceBackend
+                            ? (detail.wsWindows.find(w => String(w?.id ?? "") === String(row.modelData))
                                 ?? detail.wsWindows[row.index] ?? null)
                             : (detail.wsWindows[row.index] ?? null)
-                        readonly property int winId: detail._isNiri ? (win?.id ?? 0) : 0
-                        readonly property string winAppId: detail._isNiri
-                            ? (win?.app_id ?? "")
+                        readonly property string winId: detail._hasWorkspaceBackend ? String(win?.id ?? "") : ""
+                        readonly property string winAppId: detail._hasWorkspaceBackend
+                            ? (win?.appId ?? win?.app_id ?? "")
                             : (win?.appId ?? "")
                         readonly property string winTitle: win?.title
                             || winAppId || Translation.tr("Untitled window")
-                        readonly property bool winFocused: detail._isNiri
-                            ? (win?.is_focused ?? false)
+                        readonly property bool winFocused: detail._hasWorkspaceBackend
+                            ? (win?.focused ?? win?.is_focused ?? false)
                             : (win?.activated ?? false)
                         readonly property bool dragging: detail.dragProxy
                             && detail.dragProxy.dragging
                             && (detail.dragProxy.win === win
-                                || (detail._isNiri && (detail.dragProxy.win?.id ?? -2) === row.winId))
+                                || (detail._hasWorkspaceBackend
+                                    && String(detail.dragProxy.win?.id ?? "") === row.winId))
 
                         width: listColumn.width
                         height: detail.rowHeight
@@ -391,7 +393,9 @@ PanelSurface {
                                     id: preview
                                     anchors.fill: parent
                                     readonly property bool ready: status === Image.Ready && source.toString().length > 0
-                                    source: (detail.showPreviews && detail._isNiri && row.winId > 0)
+                                    source: (detail.showPreviews
+                                            && CompositorService.canCaptureWindowPreview
+                                            && row.winId.length > 0)
                                         ? WindowPreviewService.getPreviewUrl(row.winId) : ""
                                     asynchronous: true
                                     // Preview URLs carry a capture timestamp, so a new
@@ -428,12 +432,13 @@ PanelSurface {
                                     }
                                     Connections {
                                         target: WindowPreviewService
-                                        enabled: detail._isNiri && row.winId > 0
+                                        enabled: CompositorService.canCaptureWindowPreview
+                                            && row.winId.length > 0
                                         function onPreviewUpdated(id): void {
                                             if (String(id) === String(row.winId)) preview._apply()
                                         }
                                         function onCaptureComplete(): void {
-                                            if (row.winId > 0) preview._apply()
+                                            if (row.winId.length > 0) preview._apply()
                                         }
                                     }
                                 }
@@ -602,7 +607,9 @@ PanelSurface {
         StyledText {
             visible: detail.wsWindows.length > 0
             width: parent.width
-            text: Translation.tr("Click to focus, drag to move, hold × to close")
+            text: detail.dragProxy
+                ? Translation.tr("Click to focus, drag to move, hold × to close")
+                : Translation.tr("Click to focus, hold × to close")
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
             font.pixelSize: Appearance.font.pixelSize.smallest

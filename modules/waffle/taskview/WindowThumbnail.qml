@@ -34,12 +34,9 @@ Item {
     property string searchQuery: ""
 
     // Track focus state - compare with currently focused window
-    property int _focusedWindowId: {
-        const wins = NiriService.windows ?? []
-        const focused = wins.find(w => w.is_focused)
-        return focused?.id ?? -1
-    }
-    readonly property bool isFocused: windowData?.id === _focusedWindowId
+    property string _focusedWindowId: String(CompositorService.activeWindow?.id ?? "")
+    readonly property bool isFocused: String(windowData?.id ?? "") === _focusedWindowId
+    readonly property bool canDragWindow: CompositorService.canMoveWindowToWorkspaceById
 
     readonly property bool isMaximized: tileWidth > 0 && tileWidth >= (screenWidth - 60)
 
@@ -55,9 +52,9 @@ Item {
         return before + "<span style='background-color:" + Looks.colors.accent + ";color:" + Looks.colors.fg + "'>" + match + "</span>" + after
     }
 
-    signal dragStarted(int workspaceIdx, int windowId)
+    signal dragStarted(int workspaceIdx, string windowId)
     signal dragEnded()
-    signal niriAction(string action, int windowId)
+    signal niriAction(string action, string windowId)
     signal focusRequested(int workspaceSlot)  // Request to center this workspace
 
     // Layout calculations - uniform padding for centered content
@@ -226,7 +223,7 @@ Item {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
 
-                readonly property int windowId: root.windowData?.id ?? 0
+                readonly property string windowId: String(root.windowData?.id ?? "")
                 property string previewUrl: ""
 
                 // Loading shimmer effect
@@ -366,7 +363,7 @@ Item {
                 id: dragArea
                 anchors.fill: parent
                 hoverEnabled: true
-                drag.target: root
+                drag.target: root.canDragWindow ? root : null
                 acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
 
                 property real pressX: 0
@@ -384,7 +381,7 @@ Item {
 
                     // Middle-click to close window
                     if (mouse.button === Qt.MiddleButton) {
-                        NiriService.closeWindow(root.windowData?.id)
+                        CompositorService.closeWindow(root.windowData?.id)
                         return
                     }
 
@@ -404,9 +401,11 @@ Item {
                     pressX = mouse.x
                     pressY = mouse.y
                     wasDragging = false
+                    if (!root.canDragWindow) return
                     root.isBeingDragged = true
-                    const ws = NiriService.workspaces?.[root.windowData?.workspace_id]
-                    root.dragStarted(ws?.idx ?? -1, root.windowData?.id ?? -1)
+                    const ws = CompositorService.workspaces.find(workspace =>
+                        String(workspace.id ?? "") === String(root.windowData?.workspace_id ?? ""))
+                    root.dragStarted(Number(ws?.index ?? ws?.idx ?? -1), String(root.windowData?.id ?? ""))
                     root.Drag.active = true
                     root.Drag.source = root
                     root.Drag.hotSpot.x = mouse.x
@@ -427,16 +426,18 @@ Item {
 
                     const wasActualDrag = wasDragging
 
-                    root.Drag.active = false
-                    root.isBeingDragged = false
-                    root.dragEnded()
-                    root.x = Qt.binding(() => root.baseX)
-                    root.y = Qt.binding(() => root.baseY)
+                    if (root.canDragWindow) {
+                        root.Drag.active = false
+                        root.isBeingDragged = false
+                        root.dragEnded()
+                        root.x = Qt.binding(() => root.baseX)
+                        root.y = Qt.binding(() => root.baseY)
+                    }
 
                     // Left click without drag = focus window and center on its workspace
                     if (mouse.button === Qt.LeftButton && !wasActualDrag) {
                         root.focusRequested(root.workspaceSlot)
-                        NiriService.focusWindow(root.windowData?.id)
+                        CompositorService.focusWindow(root.windowData?.id)
                         if (Config.options?.waffles?.taskView?.closeOnSelect) {
                             GlobalStates.waffleTaskViewOpen = false
                         }
@@ -445,7 +446,7 @@ Item {
 
                 onDoubleClicked: mouse => {
                     if (mouse.button === Qt.LeftButton) {
-                        NiriService.focusWindow(root.windowData?.id)
+                        CompositorService.focusWindow(root.windowData?.id)
                         GlobalStates.waffleTaskViewOpen = false
                     }
                 }
@@ -487,7 +488,7 @@ Item {
                     hoverEnabled: true
                     onEntered: { root.hovered = true; root.closeHovered = true }
                     onExited: root.closeHovered = false
-                    onClicked: NiriService.closeWindow(root.windowData?.id)
+                    onClicked: CompositorService.closeWindow(root.windowData?.id)
                 }
             }
 
@@ -514,7 +515,7 @@ Item {
                     text: Translation.tr("Switch to Window"),
                     action: () => {
                         contextMenu.active = false
-                        NiriService.focusWindow(root.windowData?.id)
+                        CompositorService.focusWindow(root.windowData?.id)
                         GlobalStates.waffleTaskViewOpen = false
                     }
                 },
@@ -524,7 +525,7 @@ Item {
                     text: Translation.tr("Close Window"),
                     action: () => {
                         contextMenu.active = false
-                        NiriService.closeWindow(root.windowData?.id)
+                        CompositorService.closeWindow(root.windowData?.id)
                     }
                 }
             ]

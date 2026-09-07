@@ -150,7 +150,7 @@ AppButton {
 
             // Case 3: App has visible windows but is not focused.
             if (windowIds.length > 0) {
-                NiriService.focusWindow(windowIds[0])
+                CompositorService.focusWindow(windowIds[0])
                 return
             }
         } else if (root.appEntry.toplevels.length > 0) {
@@ -305,12 +305,11 @@ AppButton {
                     text: root.multiple ? Translation.tr("Close all windows") : Translation.tr("Close window"),
                     action: () => {
                         for (let toplevel of root.appEntry.toplevels) {
-                            if (CompositorService.isNiri
-                                    && toplevel?.niriWindowId) {
-                                NiriService.closeWindow(toplevel.niriWindowId)
-                            } else {
+                            const id = toplevel?.compositorWindowId ?? toplevel?.niriWindowId
+                            if (CompositorService.hasWorkspaceBackend && id !== undefined && id !== null)
+                                CompositorService.closeWindow(id)
+                            else
                                 toplevel?.close()
-                            }
                         }
                     }
                 }

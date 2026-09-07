@@ -13,21 +13,15 @@ Item {
     id: root
     signal closed
 
-    readonly property var workspaces: NiriService.currentOutputWorkspaces ?? []
+    readonly property var workspaces: CompositorService.currentOutputWorkspaces ?? []
     readonly property int currentWorkspaceIdx: {
-        const ws = workspaces.find(w => w.is_active || w.is_focused)
-        return ws ? ws.idx : 1
+        const ws = workspaces.find(w => w.active || w.focused || w.is_active || w.is_focused)
+        return Number(ws?.index ?? ws?.idx ?? 1)
     }
+    readonly property bool canMoveWindows: CompositorService.canMoveWindowToWorkspaceById
 
-    // Screen dimensions
-    readonly property real screenWidth: {
-        const info = NiriService.outputs?.[NiriService.currentOutput]
-        return info?.logical?.width ?? 1920
-    }
-    readonly property real screenHeight: {
-        const info = NiriService.outputs?.[NiriService.currentOutput]
-        return info?.logical?.height ?? 1080
-    }
+    readonly property real screenWidth: root.QsWindow.window?.screen?.width ?? 1920
+    readonly property real screenHeight: root.QsWindow.window?.screen?.height ?? 1080
     
     // Thumbnail sizing
     readonly property real workspaceSpacing: 48
@@ -77,7 +71,7 @@ Item {
     property int draggingFromWorkspace: -1
     property int dragTargetWorkspace: -1
     property bool isDragging: false
-    property int draggingWindowId: -1
+    property string draggingWindowId: ""
     
     // Keyboard navigation for windows
     property int focusedWindowIndex: -1
@@ -116,18 +110,21 @@ Item {
     height: totalHeight
 
     function switchToWorkspace(idx: int): void {
-        NiriService.switchToWorkspace(idx)
+        const ws = cachedWorkspaces.find(workspace => workspace.idx === idx)
+        if (ws) CompositorService.switchWorkspace(ws)
         GlobalStates.waffleTaskViewOpen = false
     }
 
-    function moveWindowToWorkspace(windowId: int, targetIdx: int): void {
+    function moveWindowToWorkspace(windowId, targetIdx: int): void {
+        if (!root.canMoveWindows) return
         Quickshell.execDetached(["/usr/bin/niri", "msg", "action", "move-window-to-workspace",
-            "--window-id", windowId.toString(),
+            "--window-id", String(windowId),
             "--focus", "false",
             targetIdx.toString()])
     }
     
-    function moveWindowToNewWorkspace(windowId: int): void {
+    function moveWindowToNewWorkspace(windowId): void {
+        if (!root.canMoveWindows) return
         // Move window to a new workspace at the end
         const lastWs = cachedWorkspaces[cachedWorkspaces.length - 1]
         const newWsIdx = lastWs ? lastWs.idx + 1 : 1
@@ -156,13 +153,14 @@ Item {
         ) ?? cachedWorkspaces.find(ws => ws.idx !== wsIdx)
         
         if (otherWs) {
-            NiriService.switchToWorkspace(otherWs.idx)
+            CompositorService.switchWorkspace(otherWs)
             refreshTimer.interval = 300
             refreshTimer.start()
         }
     }
     
-    function executeNiriAction(action: string, windowId: int): void {
+    function executeNiriAction(action: string, windowId): void {
+        if (!CompositorService.isNiri) return
         Quickshell.execDetached(["/usr/bin/niri", "msg", "action", "focus-window", "--id", windowId.toString()])
         Qt.callLater(() => {
             Quickshell.execDetached(["/usr/bin/niri", "msg", "action", action])
@@ -173,10 +171,10 @@ Item {
     function refreshCache(): void {
         cachedWorkspaces = workspaces.map(ws => ({
             id: ws.id,
-            idx: ws.idx,
+            idx: Number(ws.index ?? ws.idx ?? 1),
             name: ws.name,
-            is_active: ws.is_active,
-            is_focused: ws.is_focused,
+            is_active: ws.active ?? ws.is_active ?? false,
+            is_focused: ws.focused ?? ws.is_focused ?? false,
             output: ws.output
         }))
         
@@ -185,19 +183,25 @@ Item {
         
         for (let wsIdx = 0; wsIdx < wsList.length; wsIdx++) {
             const ws = wsList[wsIdx]
-            let wins = (NiriService.windows ?? []).filter(w => w.workspace_id === ws.id)
-            
-            // Sort windows by their X position in scrolling layout (column order)
-            wins = wins.sort((a, b) => {
-                const posA = a.layout?.pos_in_scrolling_layout?.[0] ?? 0
-                const posB = b.layout?.pos_in_scrolling_layout?.[0] ?? 0
-                return posA - posB
-            })
+            let wins = (CompositorService.windows ?? []).filter(w =>
+                String(w.workspaceId ?? w.workspace_id ?? "") === String(ws.id ?? ""))
+            if (CompositorService.isNiri) {
+                wins = wins.sort((a, b) => {
+                    const posA = a.layout?.pos_in_scrolling_layout?.[0] ?? 0
+                    const posB = b.layout?.pos_in_scrolling_layout?.[0] ?? 0
+                    return posA - posB
+                })
+            } else if (CompositorService.isUmbriel) {
+                wins = wins.sort((a, b) => (a.x ?? 0) - (b.x ?? 0))
+            }
             
             // Calculate total width of all windows in this workspace
             let totalWidth = 0
             for (const win of wins) {
-                totalWidth += win.layout?.tile_size?.[0] ?? screenWidth
+                const width = CompositorService.isUmbriel
+                    ? Number(win.width ?? 0)
+                    : Number(win.layout?.tile_size?.[0] ?? 0)
+                totalWidth += width > 0 ? width : screenWidth
             }
             
             // Calculate cumulative X offset for each window
@@ -205,8 +209,14 @@ Item {
             
             for (let i = 0; i < wins.length; i++) {
                 const win = wins[i]
-                const tileWidth = win.layout?.tile_size?.[0] ?? screenWidth
-                const tileHeight = win.layout?.tile_size?.[1] ?? screenHeight
+                const rawWidth = CompositorService.isUmbriel
+                    ? Number(win.width ?? 0)
+                    : Number(win.layout?.tile_size?.[0] ?? 0)
+                const rawHeight = CompositorService.isUmbriel
+                    ? Number(win.height ?? 0)
+                    : Number(win.layout?.tile_size?.[1] ?? 0)
+                const tileWidth = rawWidth > 0 ? rawWidth : screenWidth
+                const tileHeight = rawHeight > 0 ? rawHeight : screenHeight
                 
                 // Proportion is the ratio of this window's width to total workspace width
                 const proportion = totalWidth > 0 ? tileWidth / totalWidth : 1
@@ -218,8 +228,8 @@ Item {
                         id: win.id,
                         app_id: AppSearch.resolveWindowIdentity(win),
                         title: win.title,
-                        workspace_id: win.workspace_id,
-                        is_focused: win.is_focused
+                        workspace_id: win.workspaceId ?? win.workspace_id,
+                        is_focused: win.focused ?? win.is_focused ?? false
                     },
                     tileWidth: tileWidth,
                     tileHeight: tileHeight,
@@ -251,11 +261,11 @@ Item {
     }
     
     Connections {
-        target: NiriService
+        target: CompositorService
         function onWindowsChanged(): void {
             // Only refresh if window count changed (window closed/opened), not on focus change
             if (GlobalStates.waffleTaskViewOpen) {
-                const currentCount = (NiriService.windows ?? []).length
+                const currentCount = (CompositorService.windows ?? []).length
                 const cachedCount = root.cachedWindowItems.length
                 if (currentCount !== cachedCount) {
                     root.refreshCache()
@@ -378,7 +388,7 @@ Item {
             const idx = Math.max(0, Math.min(focusedWindowIndex, filteredWindowItems.length - 1))
             const win = filteredWindowItems[idx]
             if (win) {
-                NiriService.focusWindow(win.window.id)
+                CompositorService.focusWindow(win.window.id)
                 GlobalStates.waffleTaskViewOpen = false
                 return
             }
@@ -387,7 +397,7 @@ Item {
         // Normal mode - focus window or switch workspace
         const focusedWin = getFocusedWindow()
         if (focusedWin) {
-            NiriService.focusWindow(focusedWin.window.id)
+            CompositorService.focusWindow(focusedWin.window.id)
             GlobalStates.waffleTaskViewOpen = false
         } else {
             const ws = cachedWorkspaces[selectedSlot]
@@ -415,7 +425,7 @@ Item {
         if (event.key === Qt.Key_Delete && !event.modifiers) {
             const focusedWin = getFocusedWindow()
             if (focusedWin) {
-                NiriService.closeWindow(focusedWin.window.id)
+                CompositorService.closeWindow(focusedWin.window.id)
                 refreshTimer.start()
                 event.accepted = true
                 return
@@ -496,7 +506,7 @@ Item {
             // New workspace drop zone (appears at right edge when dragging)
             Item {
                 id: newWorkspaceZone
-                visible: root.isDragging
+                visible: root.canMoveWindows && root.isDragging
                 anchors.left: workspaceRow.right
                 anchors.leftMargin: root.workspaceSpacing / 2
                 anchors.top: workspaceRow.top
@@ -618,6 +628,7 @@ Item {
                         searchQuery: root.searchQuery
 
                         onDragStarted: function(wsIdx, windowId) {
+                            if (!root.canMoveWindows) return
                             root.isDragging = true
                             root.draggingFromWorkspace = wsIdx
                             root.draggingWindowId = windowId
@@ -633,7 +644,7 @@ Item {
                                 root.isDragging = false
                                 root.draggingFromWorkspace = -1
                                 root.dragTargetWorkspace = -1
-                                root.draggingWindowId = -1
+                                root.draggingWindowId = ""
                                 refreshTimer.interval = 300  // Longer delay for new ws
                                 refreshTimer.start()
                                 return
@@ -648,7 +659,7 @@ Item {
                             root.isDragging = false
                             root.draggingFromWorkspace = -1
                             root.dragTargetWorkspace = -1
-                            root.draggingWindowId = -1
+                            root.draggingWindowId = ""
                             
                             if (movedToOther) {
                                 refreshTimer.interval = 150

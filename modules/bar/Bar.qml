@@ -112,7 +112,7 @@ Scope {
                 readonly property bool autoHideEnabled: Config.options?.bar?.autoHide?.enable ?? false
                 readonly property bool pushWindowsWhenShown: Config.options?.bar?.autoHide?.pushWindows ?? false
                 readonly property bool overviewOwnsEdge: GlobalStates.overviewOpen
-                    || (CompositorService.isNiri && NiriService.inOverview)
+                    || CompositorService.inOverview
                 readonly property string outputName: barRoot.screen?.name ?? ""
                 property bool contextMenuHold: false
                 property bool leftSidebarHold: false

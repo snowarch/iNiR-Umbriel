@@ -447,8 +447,14 @@ Singleton {
         orbitStageOverride = current === "orbital" ? "stage" : "orbital"
     }
 
-    function openTaskView(outputName): void { root.openOrbit(outputName) }
-    function toggleTaskView(outputName): void { root.toggleOrbit(outputName) }
+    function openTaskView(outputName): void {
+        if (CompositorService.isUmbriel) { CompositorService.setNativeOverview(true); return }
+        root.openOrbit(outputName)
+    }
+    function toggleTaskView(outputName): void {
+        if (CompositorService.isUmbriel) { CompositorService.toggleOverview(); return }
+        root.toggleOrbit(outputName)
+    }
 
     function openSidebarLeft(outputName): void {
         sidebarLeftTargetOutput = root.resolveOutputName(outputName,

@@ -12,9 +12,9 @@ import qs.modules.pill
 
 // One workspace thumbnail in the rail.
 //
-// Preview protocol: Niri has no per-toplevel wlr-screencopy, so the reliable
-// path is WindowPreviewService — it screenshots each window through Niri's own
-// `screenshot-window` IPC and caches the PNG. We display that cached frame,
+// WindowPreviewService caches compositor-owned captures. Umbriel uses its native
+// foreign-toplevel image capture source; Niri falls back to screenshot-window IPC.
+// We display the cached frame,
 // refreshed whenever the strip opens, and fall back to the focused app icon.
 //
 // Style frame is token-driven; zzz uses a chamfered ZzzPlate silhouette.
@@ -30,7 +30,7 @@ Item {
     property bool islandChrome: false
     property bool showPreviews: true
     property bool showAppIcons: true
-    // Niri-only: windows for this workspace, pre-bucketed by the parent strip so
+    // Windows for this workspace, pre-bucketed by the parent strip so
     // the card doesn't re-filter the full window list itself. Null falls back to
     // self-filtering (keeps the component usable standalone / on Hyprland).
     property var injectedWindows: null
@@ -39,24 +39,22 @@ Item {
 
     signal activated()
 
-    readonly property bool _isNiri: CompositorService.isNiri
-    readonly property bool isActiveWs: _isNiri
-        ? (workspace?.is_active ?? false)
-        : (workspace?.active ?? false)
-    readonly property int wsId: workspace?.id ?? 0
-    readonly property int wsIndex: _isNiri
-        ? (workspace?.idx ?? 0)
-        : (workspace?.id ?? 0)
+    readonly property bool _hasWorkspaceBackend: CompositorService.hasWorkspaceBackend
+    readonly property bool isActiveWs: workspace?.active ?? workspace?.is_active ?? false
+    readonly property string wsId: String(workspace?.id ?? "")
+    readonly property int wsIndex: Number(workspace?.index ?? workspace?.idx ?? workspace?.id ?? 0)
     readonly property string wsName: workspace?.name || String(wsIndex)
-    readonly property var wsWindows: _isNiri
+    readonly property var wsWindows: _hasWorkspaceBackend
         ? (injectedWindows !== null
             ? injectedWindows
-            : (NiriService.windows ?? []).filter(w => w.workspace_id === wsId))
+            : (CompositorService.windows ?? []).filter(w =>
+                String(w?.workspaceId ?? w?.workspace_id ?? "") === wsId))
         : (CompositorService.isHyprland ? (workspace?.toplevels?.values ?? []) : [])
-    readonly property var focusedWindow: wsWindows.find(w => _isNiri ? (w?.is_focused ?? false) : (w?.activated ?? false)) ?? wsWindows[0] ?? null
-    readonly property int focusedWindowId: _isNiri ? (focusedWindow?.id ?? 0) : 0
-    readonly property string focusedAppId: _isNiri
-        ? (focusedWindow?.app_id ?? "")
+    readonly property var focusedWindow: wsWindows.find(w => _hasWorkspaceBackend
+        ? (w?.focused ?? w?.is_focused ?? false) : (w?.activated ?? false)) ?? wsWindows[0] ?? null
+    readonly property string focusedWindowId: _hasWorkspaceBackend ? String(focusedWindow?.id ?? "") : ""
+    readonly property string focusedAppId: _hasWorkspaceBackend
+        ? (focusedWindow?.appId ?? focusedWindow?.app_id ?? "")
         : (focusedWindow?.appId ?? "")
     readonly property string focusedTitle: focusedWindow?.title
         || focusedAppId || Translation.tr("Empty workspace")
@@ -69,7 +67,8 @@ Item {
         const seen = ({})
         for (let i = 0; i < wsWindows.length && ids.length < 3; i++) {
             const win = wsWindows[i]
-            const appId = _isNiri ? (win?.app_id ?? "") : (win?.appId ?? "")
+            const appId = _hasWorkspaceBackend
+                ? (win?.appId ?? win?.app_id ?? "") : (win?.appId ?? "")
             if (appId.length === 0 || seen[appId]) continue
             seen[appId] = true
             ids.push(appId)
@@ -188,7 +187,7 @@ Item {
             }
 
             function refresh(): void {
-                const next = (card.shown && card.showPreviews && card.focusedWindowId > 0)
+                const next = (card.shown && card.showPreviews && card.focusedWindowId.length > 0)
                     ? WindowPreviewService.getPreviewUrl(card.focusedWindowId)
                     : ""
                 // captureComplete() fires on every strip open even when nothing

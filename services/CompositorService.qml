@@ -31,6 +31,10 @@ Singleton {
     property var _coordCache: ({})
 
     readonly property bool hasWorkspaceBackend: root.isNiri || root.isUmbriel
+    readonly property bool hasNativeToplevelCapture: root.isUmbriel
+    readonly property bool canCaptureScreen: root.isNiri || root.isUmbriel
+    readonly property bool canCaptureWindowPreview: root.isNiri || root.isUmbriel
+    readonly property bool canMoveWindowToWorkspaceById: root.isNiri
     readonly property var windows: {
         if (root.isUmbriel)
             return UmbrielService.windows
@@ -630,6 +634,12 @@ Singleton {
         if (root.isNiri)
             return NiriService.toggleOverview()
         return false
+    }
+
+    function setNativeOverview(open: bool): bool {
+        if (!root.hasWorkspaceBackend) return false
+        if (root.inOverview === open) return true
+        return root.toggleOverview()
     }
 
     function focusWorkspaceUp() {

@@ -28,9 +28,9 @@ Item {
     function isAppRunning(cmd) {
         if (!cmd) return false
         const appName = cmd.split("/").pop().toLowerCase()
-        return NiriService.windows.some(w => 
-            w.app_id?.toLowerCase().includes(appName) ||
-            w.title?.toLowerCase().includes(appName)
+        return (CompositorService.windows ?? []).some(w =>
+            String(w.appId ?? w.app_id ?? "").toLowerCase().includes(appName) ||
+            String(w.title ?? "").toLowerCase().includes(appName)
         )
     }
 
