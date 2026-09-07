@@ -62,6 +62,26 @@ inir_detect_compositor_service() {
     return 1
 }
 
+inir_session_env_value() {
+    local key="$1"
+    local current="${!key:-}"
+    if [[ -n "$current" ]]; then
+        printf '%s\n' "$current"
+        return 0
+    fi
+    command -v systemctl >/dev/null 2>&1 || return 1
+    systemctl --user show-environment 2>/dev/null \
+        | sed -n "s/^${key}=//p" | head -1
+}
+
+inir_detect_compositor_name() {
+    case "$(inir_detect_compositor_service 2>/dev/null || true)" in
+        umbriel-session.target) printf 'Umbriel\n' ;;
+        niri.service) printf 'Niri\n' ;;
+        *) return 1 ;;
+    esac
+}
+
 inir_install_compositor_service() {
     case "${INIR_INSTALL_COMPOSITOR:-auto}" in
         umbriel) printf 'umbriel-session.target\n'; return 0 ;;

@@ -875,11 +875,20 @@ _inir_perf_open_media() {
 
 _inir_perf_layer_names() {
     local pid="$1" socket_entry socket
-    command -v niri >/dev/null 2>&1 || return 0
+
+    socket_entry="$(_inir_perf_proc_env_entry "$pid" UMBRIEL_SOCKET)"
+    socket="${socket_entry#*=}"
+    if [[ -n "$socket_entry" && -n "$socket" ]] && command -v umbriel >/dev/null 2>&1; then
+        env UMBRIEL_SOCKET="$socket" umbriel layers --json 2>/dev/null \
+            | jq -r '.[] | select(.mapped == true) | .namespace' 2>/dev/null
+        return
+    fi
+
     socket_entry="$(_inir_perf_proc_env_entry "$pid" NIRI_SOCKET)"
     socket="${socket_entry#*=}"
-    [[ -n "$socket_entry" && -n "$socket" ]] || return 0
-    env NIRI_SOCKET="$socket" niri msg layers 2>/dev/null | awk -F'"' '/Namespace:/ { print $2 }'
+    if [[ -n "$socket_entry" && -n "$socket" ]] && command -v niri >/dev/null 2>&1; then
+        env NIRI_SOCKET="$socket" niri msg layers 2>/dev/null | awk -F'"' '/Namespace:/ { print $2 }'
+    fi
 }
 
 # Print a runtime perf snapshot of the running shell. Used by support triage
@@ -936,10 +945,11 @@ _inir_doctor_perf() {
         [[ -z "$qt_ver" ]] && qt_ver="(unknown)"
     fi
     local compositor="unknown"
-    if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then compositor="hyprland"
-    elif [[ -n "${NIRI_SOCKET:-}" ]]; then compositor="niri"
-    elif [[ -n "${XDG_CURRENT_DESKTOP:-}" ]]; then compositor="$XDG_CURRENT_DESKTOP"
-    fi
+    case "$(detect_compositor_service 2>/dev/null || true)" in
+        umbriel-session.target) compositor="umbriel" ;;
+        niri.service) compositor="niri" ;;
+        *) [[ -n "${XDG_CURRENT_DESKTOP:-}" ]] && compositor="$XDG_CURRENT_DESKTOP" ;;
+    esac
     printf 'Version:    %s (%s)\n' "$inir_version" "$inir_commit"
     printf 'Quickshell: %s | Qt: %s | Compositor: %s\n' "$qs_ver" "$qt_ver" "$compositor"
     printf '\n'
@@ -1172,7 +1182,7 @@ _inir_doctor_perf() {
         layer_count="$(printf '%s\n' "$layer_names" | awk 'NF {count++} END {print count+0}')"
         printf '    %s total: %s\n' "$layer_count" "$(printf '%s\n' "$layer_names" | awk 'NF { value = value (value ? ", " : "") $0 } END { print value }')"
     else
-        printf '    unavailable (not Niri, missing socket, or compositor query failed)\n'
+        printf '    unavailable (missing compositor socket or layer query failed)\n'
     fi
     printf '\n'
 
@@ -2349,6 +2359,25 @@ resolve_launcher_path() {
 show_logs() {
     resolve_config_dir
 
+    # A support shell/TTY may not inherit the compositor environment even while
+    # the supervised shell is running. Import only the display/socket identity
+    # needed for Quickshell to locate the correct instance.
+    local _log_env _log_var _log_val
+    _log_env="$(_get_systemd_user_env)"
+    if [[ -n "$_log_env" ]]; then
+        for _log_var in WAYLAND_DISPLAY UMBRIEL_SOCKET NIRI_SOCKET DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE; do
+            if [[ -z "${!_log_var:-}" ]]; then
+                _log_val="$(grep "^${_log_var}=" <<< "$_log_env" | head -1 | cut -d= -f2- || true)"
+                [[ -n "$_log_val" ]] && export "${_log_var}=${_log_val}"
+            fi
+        done
+    fi
+    if [[ -n "${UMBRIEL_SOCKET:-}" ]]; then
+        unset NIRI_SOCKET
+    elif [[ -n "${NIRI_SOCKET:-}" ]]; then
+        unset UMBRIEL_SOCKET
+    fi
+
     # --debug restarts the shell in the FOREGROUND with QS_DEBUG=1 and no category
     # filtering, so the internal _log() telemetry and every framework category are
     # actually EMITTED to stdout (the service unit's Environment= would otherwise
@@ -2380,9 +2409,9 @@ run_repair() {
     printf '\n== running doctor ==\n'
     run_setup_inline "$dir" doctor
 
-    if [[ -z "${WAYLAND_DISPLAY:-}" && -z "${DISPLAY:-}" && -z "${NIRI_SOCKET:-}" && -z "${UMBRIEL_SOCKET:-}" ]]; then
-        printf '\n== no graphical session ==\n'
-        printf 'doctor finished, but restart was skipped because there is no live display.\n'
+    if [[ -z "$(detect_compositor_service 2>/dev/null || true)" ]]; then
+        printf '\n== no supported compositor session ==\n'
+        printf 'doctor finished, but restart was skipped because no supported compositor is active.\n'
         return
     fi
 
@@ -2912,6 +2941,9 @@ run_service_command() {
                 cfg_path="$(readlink -f "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/inir" 2>/dev/null)"
                 [[ -z "$cfg_path" ]] && cfg_path="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/inir"
                 exec qs -p "$cfg_path" log --rules "*=true" "$@"
+            fi
+            if [[ $# -eq 0 ]]; then
+                exec journalctl --user-unit inir.service -n 100 --no-pager
             fi
             exec journalctl --user-unit inir.service "$@"
             ;;

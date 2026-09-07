@@ -850,17 +850,20 @@ show_status_environment() {
     kernel="$(uname -srm 2>/dev/null || echo unknown)"
     tui_table_row "Kernel" "$kernel" 22 42
 
-    # Compositor + version
-    local compositor="unknown" comp_ver=""
-    if [[ -n "${NIRI_SOCKET:-}" ]] && command -v niri >/dev/null 2>&1; then
-        compositor="niri"
-        comp_ver="$(niri --version 2>/dev/null | grep -oP '\d+\.\d+(\.\d+)?' | head -1)"
-    elif [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] && command -v Hyprland >/dev/null 2>&1; then
-        compositor="hyprland"
-        comp_ver="$(Hyprland --version 2>/dev/null | grep -oP 'v\d+\.\d+(\.\d+)?' | head -1 | tr -d 'v')"
-    elif command -v niri >/dev/null 2>&1 && niri msg --json version >/dev/null 2>&1; then
-        compositor="niri (offline)"
-    fi
+    # Compositor + version. Prefer the shared lifecycle detector so status also
+    # works from a TTY/support shell that did not inherit the graphical env.
+    local compositor="unknown" comp_ver="" compositor_name=""
+    compositor_name="$(inir_detect_compositor_name 2>/dev/null || true)"
+    case "$compositor_name" in
+        Umbriel)
+            compositor="Umbriel"
+            command -v umbriel >/dev/null 2>&1 && comp_ver="$(umbriel --version 2>/dev/null | awk '{print $2; exit}')"
+            ;;
+        Niri)
+            compositor="Niri"
+            command -v niri >/dev/null 2>&1 && comp_ver="$(niri --version 2>/dev/null | grep -oP '\d+\.\d+(\.\d+)?' | head -1)"
+            ;;
+    esac
     [[ -n "$comp_ver" ]] && compositor="${compositor} ${comp_ver}"
     tui_table_row "Compositor" "$compositor" 22 42
 
@@ -930,9 +933,13 @@ show_status_environment() {
         tui_table_row "Qt" "$qt_display" 22 42
     fi
 
-    # Active session details
-    local session_type="${XDG_SESSION_TYPE:-?}"
-    local wayland_disp="${WAYLAND_DISPLAY:-(unset)}"
+    # Active session details. The user manager owns the compositor environment,
+    # so use it as fallback when this command came from a TTY or support shell.
+    local session_type="${XDG_SESSION_TYPE:-}"
+    local wayland_disp="${WAYLAND_DISPLAY:-}"
+    [[ -n "$wayland_disp" ]] || wayland_disp="$(inir_session_env_value WAYLAND_DISPLAY 2>/dev/null || true)"
+    [[ -n "$session_type" ]] || { [[ -n "$wayland_disp" ]] && session_type="wayland" || session_type="?"; }
+    [[ -n "$wayland_disp" ]] || wayland_disp="(unset)"
     tui_table_row "Session" "$session_type ($wayland_disp)" 22 42
 
     # Config namespace location — reminds users where the user config lives
@@ -1033,7 +1040,8 @@ show_status() {
         local resolved_runtime_dir
         resolved_runtime_dir="$(readlink -f "$runtime_dir" 2>/dev/null || printf '%s' "$runtime_dir")"
         running_output="$(qs -p "$resolved_runtime_dir" list 2>/dev/null || true)"
-        if [[ -n "$running_output" && "$running_output" != No\ running\ instances* ]]; then
+        if [[ -n "$running_output" && "$running_output" != No\ running\ instances* ]] \
+            || systemctl --user is-active --quiet inir.service >/dev/null 2>&1; then
             tui_check_ok "Shell is running"
         else
             tui_check_warn "Shell is not running"
@@ -1073,13 +1081,11 @@ show_status() {
         tui_check_warn "Runtime metadata missing"
     fi
 
-    if [[ -n "${UMBRIEL_SOCKET:-}" ]]; then
-        tui_check_ok "Umbriel compositor detected"
-    elif [[ -n "${NIRI_SOCKET:-}" ]]; then
-        tui_check_ok "Niri compositor detected"
-    else
-        tui_check_warn "Not running in a supported compositor session"
-    fi
+    case "$(inir_detect_compositor_service 2>/dev/null || true)" in
+        umbriel-session.target) tui_check_ok "Umbriel compositor detected" ;;
+        niri.service) tui_check_ok "Niri compositor detected" ;;
+        *) tui_check_warn "Not running in a supported compositor session" ;;
+    esac
 
     # Pending migrations
     local pending=$(count_pending_migrations 2>/dev/null || echo "0")
@@ -1140,17 +1146,8 @@ show_info() {
     local session_type="${XDG_SESSION_TYPE:-unknown}"
 
     local compositor="Not detected"
-    if [[ -n "${UMBRIEL_SOCKET:-}" ]]; then
-        compositor="Umbriel"
-    elif [[ -n "${NIRI_SOCKET:-}" ]]; then
-        compositor="Niri"
-    elif [[ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]]; then
-        compositor="Hyprland"
-    elif [[ -n "$SWAYSOCK" ]]; then
-        compositor="Sway"
-    elif [[ -n "$XDG_CURRENT_DESKTOP" ]]; then
-        compositor="$XDG_CURRENT_DESKTOP"
-    fi
+    compositor="$(inir_detect_compositor_name 2>/dev/null || true)"
+    [[ -n "$compositor" ]] || compositor="${XDG_CURRENT_DESKTOP:-Not detected}"
 
     local kernel
     kernel=$(uname -r 2>/dev/null || echo "unknown")
@@ -1235,7 +1232,8 @@ show_info() {
         local running_output resolved_runtime_dir
         resolved_runtime_dir="$(readlink -f "$runtime_dir" 2>/dev/null || printf '%s' "$runtime_dir")"
         running_output="$(qs -p "$resolved_runtime_dir" list 2>/dev/null || true)"
-        if [[ -n "$running_output" && "$running_output" != No\ running\ instances* ]]; then
+        if [[ -n "$running_output" && "$running_output" != No\ running\ instances* ]] \
+            || systemctl --user is-active --quiet inir.service >/dev/null 2>&1; then
             tui_check_ok "Shell is running"
         else
             tui_check_warn "Shell is not running"
@@ -2276,10 +2274,14 @@ run_update_simulated() {
 
     tui_warn "Simulation mode — the installation will not change."
 
+    local simulated_branch simulated_compositor
+    simulated_branch="$(get_update_tracking_branch 2>/dev/null || echo main)"
+    simulated_compositor="$(inir_detect_compositor_name 2>/dev/null || echo compositor)"
+
     # Step 1 — fast atomic op: animated spinner
     _step_phase_start 1 "Pulling changes"
     sleep 2
-    _step_phase_done "Pulled 4 commits from origin/prerelease"
+    _step_phase_done "Fetched origin/${simulated_branch} (simulation)"
 
     # Step 2 — verbose op: header + simulated per-file lines
     _step_phase_header 2 "Syncing files"
@@ -2309,12 +2311,12 @@ run_update_simulated() {
     _step_phase_header 5 "Checking dependencies"
     sleep 1
     tui_check_ok "pipewire             (installed)"
-    tui_check_ok "niri                 (installed)"
+    tui_check_ok "${simulated_compositor,,}                 (installed)"
     tui_check_ok "matugen              (installed)"
     tui_check_ok "millennium           (installed)"
     tui_check_ok "fish                 (installed)"
     sleep 1
-    tui_success "All 48 runtime dependencies satisfied"
+    tui_success "Runtime dependency plan satisfied"
 
     # Step 6 — verbose op: header + simulated python-pkg lines
     _step_phase_header 6 "Python packages"
@@ -2422,9 +2424,8 @@ run_update() {
             tui_warn "User inir.service is masked; package-managed update left it unchanged"
         else
             ensure_user_inir_service_enabled >/dev/null 2>&1 || true
-            # Only start inir if we're running under a supported compositor.
-            # WAYLAND_DISPLAY alone is not enough — KDE/GNOME set it too.
-            if [[ -n "${NIRI_SOCKET:-}" ]] || pgrep -x niri &>/dev/null || pgrep -x Hyprland &>/dev/null; then
+            # Only start iNiR under a supported compositor lifecycle.
+            if [[ -n "$(inir_detect_compositor_service 2>/dev/null || true)" ]]; then
                 systemctl --user reset-failed inir.service >/dev/null 2>&1 || true
                 systemctl --user start inir.service >/dev/null 2>&1 || true
             fi
@@ -2959,8 +2960,8 @@ run_update() {
     # Signal success to the shell UI before restart
     _write_update_status "success"
 
-    # Restart shell (only if we have access to the session)
-    if [[ -n "$NIRI_SOCKET" ]] || [[ -n "$WAYLAND_DISPLAY" ]]; then
+    # Restart shell only when a supported compositor session owns the lifecycle.
+    if [[ -n "$(inir_detect_compositor_service 2>/dev/null || true)" ]]; then
         _step_phase_start 7 "Restarting shell"
         if inir_user_service_is_masked; then
             _step_phase_done "Shell restart skipped: inir.service is masked"

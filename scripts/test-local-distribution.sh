@@ -1035,7 +1035,15 @@ if [[ -d "$runtime_root/distro/arch" ]]; then
         exit 1
     fi
 
-    if ! grep -Fq "version-${version}-blue" "$runtime_root/README.md"; then
+    if grep -Fq '# iNiR-Umbriel' "$runtime_root/README.md"; then
+        if ! grep -Fq '**Status:** experimental port' "$runtime_root/README.md" \
+                || ! grep -Fq '**Last reviewed:**' "$runtime_root/README.md" \
+                || ! grep -Fq '**Current checkpoint:**' "$runtime_root/README.md" \
+                || ! grep -Fq 'git clone https://github.com/snowarch/iNiR-Umbriel.git' "$runtime_root/README.md"; then
+            printf 'FAIL: Umbriel README must expose experimental status, review date, checkpoint, and install source\n' >&2
+            exit 1
+        fi
+    elif ! grep -Fq "version-${version}-blue" "$runtime_root/README.md"; then
         printf 'FAIL: README release badge does not match VERSION=%s\n' "$version" >&2
         exit 1
     fi

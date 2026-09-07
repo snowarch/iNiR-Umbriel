@@ -296,7 +296,11 @@ check_critical_files() {
         doctor_runtime_dir_or_fail "Critical files"
         return 0
     fi
-    local critical=("shell.qml" "GlobalStates.qml" "modules/common/Config.qml" "services/NiriService.qml")
+    local critical=("shell.qml" "GlobalStates.qml" "modules/common/Config.qml" "services/CompositorService.qml")
+    case "$(doctor_detect_compositor_service 2>/dev/null || true)" in
+        umbriel-session.target) critical+=("services/UmbrielService.qml") ;;
+        niri.service) critical+=("services/NiriService.qml") ;;
+    esac
     local missing=0
     
     for file in "${critical[@]}"; do
@@ -316,11 +320,21 @@ check_script_permissions() {
     target="${target}/scripts"
     [[ ! -d "$target" ]] && return 0
     
-    local bad=$(find "$target" \( -name "*.sh" -o -name "*.fish" -o -name "*.py" \) ! -executable 2>/dev/null | wc -l)
-    
+    local bad=0
+    local script
+    while IFS= read -r -d '' script; do
+        [[ "$(basename "$script")" == test-* ]] && continue
+        head -1 "$script" 2>/dev/null | grep -q '^#!' || continue
+        [[ -x "$script" ]] || ((bad++)) || true
+    done < <(find "$target" -type f \( -name "*.sh" -o -name "*.fish" -o -name "*.py" \) -print0 2>/dev/null)
+
     if [[ $bad -gt 0 ]]; then
-        find "$target" \( -name "*.sh" -o -name "*.fish" -o -name "*.py" \) -exec chmod +x {} \;
-        doctor_fix "Fixed permissions on $bad script(s)"
+        while IFS= read -r -d '' script; do
+            [[ "$(basename "$script")" == test-* ]] && continue
+            head -1 "$script" 2>/dev/null | grep -q '^#!' || continue
+            chmod +x "$script"
+        done < <(find "$target" -type f \( -name "*.sh" -o -name "*.fish" -o -name "*.py" \) -print0 2>/dev/null)
+        doctor_fix "Fixed permissions on $bad runtime script(s)"
     else
         doctor_pass "Script permissions OK"
     fi
@@ -335,7 +349,7 @@ check_repo_checkout_state() {
         return 0
     fi
 
-    if [[ ! -d "${REPO_ROOT}/.git" ]]; then
+    if [[ ! -e "${REPO_ROOT}/.git" ]]; then
         doctor_fail "Repo checkout is missing git metadata"
         echo -e "    ${STY_FAINT}Run setup from a real iNiR checkout, not a random copy${STY_RST}"
         return 1
@@ -826,19 +840,29 @@ _try_install_font_package() {
 }
 
 check_compositor_running() {
-    local target
+    local target socket
     target="$(doctor_detect_compositor_service 2>/dev/null || true)"
-    if [[ "$target" == "umbriel-session.target" ]]; then
-        if [[ -n "${UMBRIEL_SOCKET:-}" && -S "$UMBRIEL_SOCKET" ]]; then
-            doctor_pass "Umbriel compositor running"
-        else
-            doctor_fail "Umbriel not detected (run inside Umbriel session)"
-        fi
-    elif [[ -n "${NIRI_SOCKET:-}" && -S "$NIRI_SOCKET" ]]; then
-        doctor_pass "Niri compositor running"
-    else
-        doctor_fail "Supported compositor not detected"
-    fi
+    case "$target" in
+        umbriel-session.target)
+            socket="$(inir_session_env_value UMBRIEL_SOCKET 2>/dev/null || true)"
+            if [[ -n "$socket" && -S "$socket" ]]; then
+                doctor_pass "Umbriel compositor running"
+            elif systemctl --user is-active --quiet umbriel-session.target >/dev/null 2>&1; then
+                doctor_pass "Umbriel session target active"
+            else
+                doctor_fail "Umbriel compositor not running"
+            fi
+            ;;
+        niri.service)
+            socket="$(inir_session_env_value NIRI_SOCKET 2>/dev/null || true)"
+            if [[ -n "$socket" && -S "$socket" ]] || systemctl --user is-active --quiet niri.service >/dev/null 2>&1; then
+                doctor_pass "Niri compositor running"
+            else
+                doctor_fail "Niri compositor not running"
+            fi
+            ;;
+        *) doctor_fail "Supported compositor not detected" ;;
+    esac
 }
 
 check_version_tracking() {

@@ -790,7 +790,9 @@ Singleton {
     Process {
         id: fetchProc
         running: false
-        command: [...root._gitCmd, "fetch", "origin", "--quiet", "--no-tags"]
+        // Fetch refs explicitly instead of trusting remote.origin.fetch. Dedicated
+        // ports and renamed development branches can carry a stale narrow refspec.
+        command: [...root._gitCmd, "fetch", "origin", "--quiet", "--no-tags", "+refs/heads/*:refs/remotes/origin/*"]
         onExited: (exitCode, exitStatus) => {
             if (exitCode !== 0) {
                 root.isChecking = false

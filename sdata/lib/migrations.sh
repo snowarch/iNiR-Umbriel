@@ -182,10 +182,33 @@ is_migration_needed() {
     return 0
 }
 
+migration_applies_to_current_compositor() {
+    local scope="${MIGRATION_COMPOSITOR_SCOPE:-}"
+    if [[ -z "$scope" ]]; then
+        case "${MIGRATION_TARGET_FILE:-}" in
+            *"/.config/niri/"*|*"/niri/"*|*.kdl) scope="niri" ;;
+            *"/.config/umbriel/"*|*"/umbriel/"*) scope="umbriel" ;;
+            *) scope="any" ;;
+        esac
+    fi
+
+    [[ "$scope" == "any" ]] && return 0
+    local target
+    target="$(inir_detect_compositor_service 2>/dev/null || true)"
+    case "$scope:$target" in
+        niri:niri.service|umbriel:umbriel-session.target) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Get real status of a migration (checks actual config, not just JSON)
 get_migration_real_status() {
     local migration_id="$1"
     load_migration "$migration_id" 2>/dev/null || return 1
+    if ! migration_applies_to_current_compositor; then
+        echo "not-applicable"
+        return
+    fi
     local is_required="${MIGRATION_REQUIRED:-false}"
     
     if [[ "$is_required" == "true" ]]; then
@@ -263,6 +286,7 @@ load_migration() {
     MIGRATION_TITLE=""
     MIGRATION_DESCRIPTION=""
     MIGRATION_TARGET_FILE=""
+    MIGRATION_COMPOSITOR_SCOPE=""
     MIGRATION_REQUIRED=false
     MIGRATION_SESSION_IMPACT=false
     MIGRATION_SESSION_REFERENCE=""
@@ -308,6 +332,11 @@ apply_migration() {
     local force="${2:-false}"
     
     load_migration "$migration_id" || return 1
+
+    if ! migration_applies_to_current_compositor; then
+        tui_check_skip "Not applicable to this compositor: $MIGRATION_TITLE"
+        return 0
+    fi
 
     if is_migration_retired "$migration_id"; then
         mark_migration_applied "$migration_id"

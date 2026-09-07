@@ -349,7 +349,7 @@ get_update_tracking_branch() {
 }
 
 repo_worktree_is_clean() {
-    [[ -d "${REPO_ROOT}/.git" ]] || return 1
+    [[ -e "${REPO_ROOT}/.git" ]] || return 1
     [[ -z "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=normal 2>/dev/null)" ]]
 }
 
@@ -426,16 +426,19 @@ check_remote_updates() {
     #   2 = error (offline/no git/no tracked remote branch)
     #   3 = local ahead of remote
     #   4 = diverged
-    if [[ ! -d "${REPO_ROOT}/.git" ]]; then
-        return 2
-    fi
-
-    if ! git -C "$REPO_ROOT" fetch origin --quiet 2>/dev/null; then
+    if [[ ! -e "${REPO_ROOT}/.git" ]]; then
         return 2
     fi
 
     local branch
     branch="$(get_update_tracking_branch)"
+
+    # Fetch the branch explicitly instead of trusting a persisted remote.origin.fetch
+    # refspec. This keeps updates working after a checkout is moved to a dedicated
+    # repository or renamed from a development branch to main.
+    if ! git -C "$REPO_ROOT" fetch origin --quiet "+refs/heads/${branch}:refs/remotes/origin/${branch}" 2>/dev/null; then
+        return 2
+    fi
 
     local counts
     counts="$(git -C "$REPO_ROOT" rev-list --left-right --count "HEAD...origin/${branch}" 2>/dev/null)" || return 2
