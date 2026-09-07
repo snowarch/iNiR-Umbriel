@@ -150,12 +150,8 @@ Variants {
                 panelRoot.beginBlurSuppression(panelRoot._wallpaperTransitionDurationMs)
         }
 
-        property bool hasFullscreenWindow: {
-            if (CompositorService.isNiri) {
-                return GameMode.hasFullscreenOnOutput(modelData?.name ?? "")
-            }
-            return false
-        }
+        property bool hasFullscreenWindow:
+            GameMode.hasFullscreenOnOutput(modelData?.name ?? "")
 
         // Hide wallpaper (show only backdrop for overview)
         readonly property bool backdropOnly: (wBg.backdrop?.enable ?? false) && (wBg.backdrop?.hideWallpaper ?? false)
@@ -165,18 +161,12 @@ Variants {
 
         // Dynamic focus based on windows
         property bool hasWindowsOnCurrentWorkspace: {
-            try {
-                if (CompositorService.isNiri && typeof NiriService !== "undefined" && NiriService.windows && NiriService.workspaces) {
-                    const allWs = Object.values(NiriService.workspaces);
-                    if (!allWs || allWs.length === 0) return false;
-                    const outputName = panelRoot.modelData?.name ?? "";
-                    const currentWs = allWs.find(ws => ws.output === outputName
-                        && ws.is_active);
-                    if (!currentWs) return false;
-                    return NiriService.windows.some(w => w.workspace_id === currentWs.id);
-                }
-                return false;
-            } catch (e) { return false; }
+            const workspaces = CompositorService.workspaces ?? []
+            const windows = CompositorService.windows ?? []
+            const outputName = panelRoot.modelData?.name ?? ""
+            const currentWs = workspaces.find(ws => ws.output === outputName && ws.active === true)
+            if (!currentWs) return false
+            return windows.some(window => String(window.workspaceId ?? "") === String(currentWs.id ?? ""))
         }
 
         property bool focusWindowsPresent: !GlobalStates.screenLocked && hasWindowsOnCurrentWorkspace

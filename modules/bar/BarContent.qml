@@ -304,9 +304,9 @@ Item { // Bar content region
             let up = isUp;
             if (Config.options?.bar?.workspaces?.invertScroll ?? false) up = !up;
 
-            if (CompositorService.isNiri) {
-                if (up) NiriService.focusWorkspaceUp();
-                else NiriService.focusWorkspaceDown();
+            if (CompositorService.hasWorkspaceBackend) {
+                if (up) CompositorService.focusWorkspaceUp();
+                else CompositorService.focusWorkspaceDown();
             } else if (CompositorService.isHyprland) {
                 Hyprland.dispatch(up ? "workspace r-1" : "workspace r+1");
             }

@@ -66,26 +66,32 @@ Scope {
     }
 
     function buildSnapshot(): var {
-        const windows = NiriService.windows ?? []
-        const workspaces = NiriService.workspaces ?? ({})
-        const mruIds = NiriService.mruWindowIds ?? []
+        const windows = CompositorService.windows ?? []
+        const workspaces = CompositorService.workspaces ?? []
+        const mruIds = CompositorService.mruWindowIds ?? []
         if (windows.length === 0)
             return []
+
+        const workspaceById = ({})
+        for (const workspace of workspaces)
+            workspaceById[String(workspace.id)] = workspace
 
         const items = []
         const itemsById = ({})
         for (let i = 0; i < windows.length; ++i) {
             const window = windows[i]
+            const id = String(window.id ?? "")
+            const workspaceId = String(window.workspaceId ?? "")
             const appId = AppSearch.resolveWindowIdentity(window)
             const item = {
-                id: window.id,
+                id: id,
                 appId: appId,
                 title: window.title ?? "",
-                workspaceId: window.workspace_id,
-                workspaceIndex: workspaces[window.workspace_id]?.idx ?? 0
+                workspaceId: workspaceId,
+                workspaceIndex: Number(workspaceById[workspaceId]?.index ?? 0)
             }
             items.push(item)
-            itemsById[item.id] = item
+            itemsById[id] = item
         }
 
         items.sort((left, right) => {
@@ -94,7 +100,7 @@ Scope {
             const leftName = left.appId || left.title
             const rightName = right.appId || right.title
             const nameOrder = leftName.localeCompare(rightName)
-            return nameOrder !== 0 ? nameOrder : left.id - right.id
+            return nameOrder !== 0 ? nameOrder : String(left.id).localeCompare(String(right.id))
         })
 
         if (!root.useMostRecentFirst || mruIds.length === 0)
@@ -103,7 +109,7 @@ Scope {
         const ordered = []
         const used = ({})
         for (let i = 0; i < mruIds.length; ++i) {
-            const id = mruIds[i]
+            const id = String(mruIds[i])
             if (itemsById[id] !== undefined) {
                 ordered.push(itemsById[id])
                 used[id] = true
@@ -124,7 +130,7 @@ Scope {
         const index = Math.max(0, Math.min(length - 1, currentIndex))
         const windowId = snapshot[index]?.id
         if (windowId !== undefined)
-            NiriService.focusWindow(windowId)
+            CompositorService.focusWindow(windowId)
     }
 
     function step(direction: int): void {

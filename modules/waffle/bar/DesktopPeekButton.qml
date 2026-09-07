@@ -23,11 +23,10 @@ Rectangle {
         onTriggered: {
             if (hoverArea.containsMouse) {
                 root.isPeeking = true
-                if (CompositorService.isNiri) {
-                    NiriService.toggleOverview()
-                } else {
+                if (CompositorService.hasWorkspaceBackend)
+                    CompositorService.toggleOverview()
+                else
                     GlobalStates.openOverview(root.QsWindow.window?.screen?.name ?? "")
-                }
             }
         }
     }
@@ -46,11 +45,10 @@ Rectangle {
         onExited: {
             peekTimer.stop()
             if (root.isPeeking) {
-                if (CompositorService.isNiri) {
-                    NiriService.toggleOverview()
-                } else {
+                if (CompositorService.hasWorkspaceBackend)
+                    CompositorService.toggleOverview()
+                else
                     GlobalStates.overviewOpen = false
-                }
                 root.isPeeking = false
             }
         }
@@ -61,11 +59,10 @@ Rectangle {
                 root.isPeeking = false
                 // Already showing, click toggles off
             } else {
-                if (CompositorService.isNiri) {
-                    NiriService.toggleOverview()
-                } else {
+                if (CompositorService.hasWorkspaceBackend)
+                    CompositorService.toggleOverview()
+                else
                     GlobalStates.toggleOverview(root.QsWindow.window?.screen?.name ?? "")
-                }
             }
         }
     }

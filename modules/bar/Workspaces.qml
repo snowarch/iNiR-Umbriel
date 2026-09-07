@@ -204,13 +204,13 @@ Item {
     // Column mode: windows in current workspace
     readonly property var currentWorkspaceWindows: {
         if (!columnMode) return []
-        const currentWs = root.outputWorkspaces.find(w => w.is_active)
+        const currentWs = root.outputWorkspaces.find(w => w.active === true || w.is_active === true)
         if (!currentWs) return []
-        return NiriService.windows?.filter(w => w.workspace_id === currentWs.id) ?? []
+        return CompositorService.windows?.filter(w => String(w.workspaceId ?? "") === String(currentWs.id ?? "")) ?? []
     }
     readonly property int currentWindowIndex: {
         if (!columnMode) return -1
-        return currentWorkspaceWindows.findIndex(w => w.is_focused)
+        return currentWorkspaceWindows.findIndex(w => w.focused === true)
     }
     readonly property int columnsShown: columnMode ? Math.max(currentWorkspaceWindows.length, 1) : workspacesShown
 
@@ -790,7 +790,7 @@ Item {
                 
                 onPressed: {
                     if (modelData?.id !== undefined) {
-                        NiriService.focusWindow(modelData.id)
+                        CompositorService.focusWindow(modelData.id)
                     }
                 }
 
@@ -798,7 +798,7 @@ Item {
                     implicitWidth: workspaceButtonWidth
                     implicitHeight: workspaceButtonWidth
                     
-                    property string appIconSource: AppSearch.getIconSource(columnButton.modelData?.app_id ?? "")
+                    property string appIconSource: AppSearch.getIconSource(columnButton.modelData?.appId ?? "")
                     property bool isActive: columnButton.index === root.currentWindowIndex
                     property color dotColor: isActive ? root.workspaceOnPrimary : root.workspaceOnSecondaryContainer
 

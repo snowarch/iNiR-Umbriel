@@ -136,9 +136,9 @@ WPanelPageColumn {
     function getRecentApps() {
         const seen = new Set()
         const recent = []
-        const windowList = CompositorService.isNiri ? (NiriService.windows ?? []) : []
+        const windowList = CompositorService.windows ?? []
         for (const w of windowList) {
-            const appId = w.app_id ?? ""
+            const appId = w.appId ?? ""
             if (appId && !seen.has(appId) && recent.length < 4) {
                 seen.add(appId)
                 const entry = DesktopEntries.heuristicLookup(appId)

@@ -201,8 +201,12 @@ Scope {
         if (!windows || !windows.length)
             return []
 
+        const workspaceById = ({})
+        for (const workspace of workspaces ?? [])
+            workspaceById[String(workspace.id)] = workspace
+
         const items = []
-        const itemsById = {}
+        const itemsById = ({})
 
         for (let i = 0; i < windows.length; i++) {
             const w = windows[i]
@@ -219,32 +223,29 @@ Scope {
                 appName = w.title
 
             appName = toTitleCase(appName)
-            const ws = workspaces[w.workspace_id]
-            const wsIdx = ws && ws.idx !== undefined ? ws.idx : 0
+            const workspaceId = String(w.workspaceId ?? "")
+            const workspace = workspaceById[workspaceId]
+            const workspaceIndex = Number(workspace?.index ?? 0)
+            const id = String(w.id ?? "")
 
             const item = {
-                id: w.id,
+                id: id,
                 appId: appId,
                 appName: appName,
                 title: w.title || "",
-                workspaceId: w.workspace_id,
-                workspaceIdx: wsIdx,
-                isFocused: w.is_focused ?? false,
-                isFloating: w.is_floating ?? false,
-                // Pre-resolver icono durante build para evitar lag en render
+                workspaceId: workspaceId,
+                workspaceIdx: workspaceIndex,
+                isFocused: w.focused === true,
+                isFloating: w.floating === true,
                 icon: root.getCachedIcon(appId, appName, w.title)
             }
             items.push(item)
-            itemsById[item.id] = item
+            itemsById[id] = item
         }
 
         items.sort(function (a, b) {
-            const wa = workspaces[a.workspaceId]
-            const wb = workspaces[b.workspaceId]
-            const ia = wa ? wa.idx : 0
-            const ib = wb ? wb.idx : 0
-            if (ia !== ib)
-                return ia - ib
+            if (a.workspaceIdx !== b.workspaceIdx)
+                return a.workspaceIdx - b.workspaceIdx
 
             const an = (a.appName || a.title || "").toString()
             const bn = (b.appName || b.title || "").toString()
@@ -252,30 +253,27 @@ Scope {
             if (cmp !== 0)
                 return cmp
 
-            return a.id - b.id
+            return String(a.id).localeCompare(String(b.id))
         })
 
-        const useMostRecentFirst = root.altUseMostRecentFirst
-
-        if (useMostRecentFirst && mruIds && mruIds.length > 0) {
+        if (root.altUseMostRecentFirst && mruIds && mruIds.length > 0) {
             const ordered = []
-            const used = {}
+            const used = ({})
 
             for (let i = 0; i < mruIds.length; i++) {
-                const id = mruIds[i]
-                const it = itemsById[id]
-                if (it) {
-                    ordered.push(it)
+                const id = String(mruIds[i])
+                const item = itemsById[id]
+                if (item) {
+                    ordered.push(item)
                     used[id] = true
                 }
             }
 
             for (let i = 0; i < items.length; i++) {
-                const it = items[i]
-                if (!used[it.id])
-                    ordered.push(it)
+                const item = items[i]
+                if (!used[item.id])
+                    ordered.push(item)
             }
-
             return ordered
         }
 
@@ -290,17 +288,17 @@ Scope {
         
         Qt.callLater(function() {
             _rebuildPending = false
-            const windows = NiriService.windows || []
-            const workspaces = NiriService.workspaces || {}
-            const mruIds = NiriService.mruWindowIds || []
+            const windows = CompositorService.windows || []
+            const workspaces = CompositorService.workspaces || []
+            const mruIds = CompositorService.mruWindowIds || []
             itemSnapshot = buildItemsFrom(windows, workspaces, mruIds)
         })
     }
 
     function rebuildSnapshotSync() {
-        const windows = NiriService.windows || []
-        const workspaces = NiriService.workspaces || {}
-        const mruIds = NiriService.mruWindowIds || []
+        const windows = CompositorService.windows || []
+        const workspaces = CompositorService.workspaces || []
+        const mruIds = CompositorService.mruWindowIds || []
         itemSnapshot = buildItemsFrom(windows, workspaces, mruIds)
     }
 
@@ -308,9 +306,9 @@ Scope {
     
     // Synchronous version for immediate use in noVisualUi mode
     function rebuildNoUiSnapshotSync() {
-        const windows = NiriService.windows || []
-        const workspaces = NiriService.workspaces || {}
-        const mruIds = NiriService.mruWindowIds || []
+        const windows = CompositorService.windows || []
+        const workspaces = CompositorService.workspaces || []
+        const mruIds = CompositorService.mruWindowIds || []
         root.noUiSnapshot = buildItemsFrom(windows, workspaces, mruIds)
         root.noUiIndex = 0
     }
@@ -332,7 +330,7 @@ Scope {
         const idx = Math.max(0, Math.min(len - 1, root.noUiIndex))
         const id = root.noUiSnapshot[idx]?.id
         if (id !== undefined)
-            NiriService.focusWindow(id)
+            CompositorService.focusWindow(id)
     }
 
     function ensureSnapshot() {
@@ -345,26 +343,21 @@ Scope {
     }
 
     function maybeOpenOverview() {
-        if (!CompositorService.isNiri)
+        if (!CompositorService.hasWorkspaceBackend || !root.altShowOverviewWhileSwitching)
             return
-        if (!root.altShowOverviewWhileSwitching)
-            return
-        if (!NiriService.inOverview) {
+        if (!CompositorService.inOverview) {
             overviewOpenedByAltSwitcher = true
-            NiriService.toggleOverview()
+            CompositorService.toggleOverview()
         } else {
             overviewOpenedByAltSwitcher = false
         }
     }
 
     function maybeCloseOverview() {
-        if (!CompositorService.isNiri)
+        if (!CompositorService.hasWorkspaceBackend || !root.altShowOverviewWhileSwitching)
             return
-        if (!root.altShowOverviewWhileSwitching)
-            return
-        if (overviewOpenedByAltSwitcher && NiriService.inOverview) {
-            NiriService.toggleOverview()
-        }
+        if (overviewOpenedByAltSwitcher && CompositorService.inOverview)
+            CompositorService.toggleOverview()
         overviewOpenedByAltSwitcher = false
     }
 
@@ -1234,7 +1227,7 @@ Scope {
                             onClicked: {
                                 listView.currentIndex = index
                                 if (modelData && modelData.id !== undefined) {
-                                    NiriService.focusWindow(modelData.id)
+                                    CompositorService.focusWindow(modelData.id)
                                 }
                             }
                         }
@@ -1381,7 +1374,7 @@ Scope {
                                 onClicked: {
                                     listView.currentIndex = index
                                     if (modelData?.id !== undefined) {
-                                        NiriService.focusWindow(modelData.id)
+                                        CompositorService.focusWindow(modelData.id)
                                     }
                                 }
 
@@ -1676,7 +1669,7 @@ Scope {
 
                         function activate() {
                             if (modelData && modelData.id !== undefined) {
-                                NiriService.focusWindow(modelData.id)
+                                CompositorService.focusWindow(modelData.id)
                             }
                         }
                     }
@@ -1705,7 +1698,7 @@ Scope {
         }
 
         Connections {
-            target: NiriService
+            target: CompositorService
             function onWindowsChanged() {
                 if (GameMode.active) {
                     return
@@ -1715,7 +1708,7 @@ Scope {
                     return
 
                 root._pendingWindowsUpdate = function() {
-                    const wins = NiriService.windows || []
+                    const wins = CompositorService.windows || []
                     if (!wins.length) {
                         root.itemSnapshot = []
                         listView.currentIndex = -1
@@ -1855,7 +1848,7 @@ Scope {
             return
         const win = itemSnapshot[idx]
         if (win?.id !== undefined)
-            NiriService.closeWindow(win.id)
+            CompositorService.closeWindow(win.id)
     }
 
     function confirmCurrentSelection() {
@@ -1897,7 +1890,7 @@ Scope {
             if (idx >= 0 && idx < (itemSnapshot?.length ?? 0)) {
                 const item = itemSnapshot[idx]
                 if (item?.id !== undefined)
-                    NiriService.focusWindow(item.id)
+                    CompositorService.focusWindow(item.id)
             }
             return
         }
@@ -1911,7 +1904,7 @@ Scope {
     Timer {
         id: warmUpTimer
         interval: 2000  // 2 segundos después del inicio
-        running: !root._warmedUp && (NiriService.windows?.length ?? 0) > 0
+        running: !root._warmedUp && (CompositorService.windows?.length ?? 0) > 0
         onTriggered: {
             root.rebuildSnapshot()
             root._warmedUp = true
@@ -1925,12 +1918,12 @@ Scope {
 
     // Re-warm cuando cambian las ventanas (solo si no está abierto)
     Connections {
-        target: NiriService
+        target: CompositorService
         enabled: root._warmedUp && !GlobalStates.altSwitcherOpen
         function onWindowsChanged() {
             if (GameMode.active) return
             
-            const wins = NiriService.windows || []
+            const wins = CompositorService.windows || []
             for (let i = 0; i < wins.length; i++) {
                 const w = wins[i]
                 const key = AppSearch.resolveWindowIdentity(w)
@@ -1949,11 +1942,11 @@ Scope {
         onTriggered: {
             if (GameMode.active) return
             
-            if (NiriService.windows?.length > 0) {
+            if (CompositorService.windows?.length > 0) {
                 Qt.callLater(function() {
-                    const windows = NiriService.windows || []
-                    const workspaces = NiriService.workspaces || {}
-                    const mruIds = NiriService.mruWindowIds || []
+                    const windows = CompositorService.windows || []
+                    const workspaces = CompositorService.workspaces || []
+                    const mruIds = CompositorService.mruWindowIds || []
                     root.noUiSnapshot = buildItemsFrom(windows, workspaces, mruIds)
                 })
             }
