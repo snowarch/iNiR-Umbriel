@@ -5,7 +5,7 @@ iNiR compatibility work for the [Umbriel](https://github.com/noctalia-dev/umbrie
 > **Status:** experimental port, not a complete or stable compatibility target yet. This repository tracks only the Umbriel work. The established Niri edition remains in [snowarch/iNiR](https://github.com/snowarch/iNiR) and is maintained separately.
 
 **Last reviewed:** 2026-09-06
-**Current checkpoint:** `24f1b896` (`refactor(compositor): port shared window consumers`)
+**Current checkpoint:** `1a6bc5ab` (`feat(compositor): support Umbriel window previews`)
 
 ## What works today
 
@@ -22,6 +22,7 @@ iNiR compatibility work for the [Umbriel](https://github.com/noctalia-dev/umbrie
 - Umbriel-aware autostart, setup, doctor, service wiring and Arch/CachyOS dependency handling
 - Umbriel-aware status/logs/update/repair diagnostics, migration scoping and update checks
 - Shared AltSwitcher, workspace navigation and Waffle window presence paths using the compositor-neutral model
+- Compositor-neutral cached window previews, using exact Umbriel foreign-toplevel captures without touching the clipboard
 
 This list describes implemented and tested paths only. Other iNiR surfaces may still contain Niri-specific assumptions or may not have been validated under Umbriel yet.
 
