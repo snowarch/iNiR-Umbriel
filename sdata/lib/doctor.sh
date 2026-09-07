@@ -121,6 +121,16 @@ check_dependencies() {
         fi
     done
 
+    if [[ "$(doctor_detect_compositor_service 2>/dev/null || true)" == "umbriel-session.target" ]] \
+            && [[ ! -x /usr/lib/xdg-desktop-portal-umbriel ]]; then
+        missing+=("Umbriel desktop portal")
+        if [[ "${OS_GROUP_ID:-unknown}" == "arch" ]]; then
+            missing_cmds+=("xdg-desktop-portal-umbriel-git")
+        else
+            missing_cmds+=("xdg-desktop-portal-umbriel")
+        fi
+    fi
+
     # EasyEffects can expose Equalizer settings through its local server even
     # when the actual LSP LV2 DSP backend is absent. Check the bundle itself so
     # Doctor repairs the capability the native iNiR equalizer depends on.

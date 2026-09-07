@@ -390,7 +390,7 @@ tui_info "Installing AUR packages..."
 REQUIRED_AUR_PACKAGES=(
 )
 if [[ "$INIR_ARCH_COMPOSITOR_TARGET" == "umbriel-session.target" ]]; then
-  REQUIRED_AUR_PACKAGES+=(umbriel-git)
+  REQUIRED_AUR_PACKAGES+=(umbriel-git xdg-desktop-portal-umbriel-git)
 fi
 
 AUR_PACKAGES=(

@@ -517,7 +517,7 @@ if grep -Fq 'pacman -S $installflags "${_all_official[@]}"' "$arch_installer"; t
     exit 1
 fi
 if ! grep -Fq 'INIR_ARCH_COMPOSITOR_TARGET' "$arch_installer" \
-        || ! grep -Fq 'REQUIRED_AUR_PACKAGES+=(umbriel-git)' "$arch_installer" \
+        || ! grep -Fq 'REQUIRED_AUR_PACKAGES+=(umbriel-git xdg-desktop-portal-umbriel-git)' "$arch_installer" \
         || ! grep -Fq "grep -vx 'niri'" "$arch_installer" \
         || ! grep -Fq 'defaults/umbriel' "$runtime_root/sdata/subcmd-install/3.files.sh"; then
     printf 'FAIL: Umbriel install routing can regress to installing Niri or omit Umbriel defaults\n' >&2
