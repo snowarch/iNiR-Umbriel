@@ -33,6 +33,8 @@ PanelWindow {
     signal dismiss()
     
     readonly property bool useNiri: CompositorService.isNiri
+    readonly property bool useUmbriel: CompositorService.isUmbriel
+    readonly property bool useHyprland: CompositorService.isHyprland
 
     property string screenshotDir: Directories.screenshotTemp
     readonly property string screenshotNameFormat: Config.options?.regionSelector?.screenshotNameFormat || "ss-%Y%m%d-%H%M%S"
@@ -80,17 +82,17 @@ PanelWindow {
     property color imageFillColor: ColorUtils.transparentize(imageBorderColor, 0.85)
     property color onBorderColor: Appearance.inirEverywhere ? Appearance.inir.colText
         : Appearance.auroraEverywhere ? Appearance.colors.colOnLayer0 : Appearance.colors.colScrim
-    readonly property var windows: useNiri
-        ? (NiriService.windows || [])
+    readonly property var windows: CompositorService.hasWorkspaceBackend
+        ? (CompositorService.windows || [])
         : [...HyprlandData.windowList].sort((a, b) => {
             // Sort floating=true windows before others
             if (a.floating === b.floating) return 0;
             return a.floating ? -1 : 1;
         })
-    readonly property var layers: useNiri ? ({}) : HyprlandData.layers
+    readonly property var layers: useHyprland ? HyprlandData.layers : ({})
     readonly property real falsePositivePreventionRatio: 0.5
 
-    readonly property var hyprlandMonitor: CompositorService.isHyprland ? null : null // Disabled for Niri
+    readonly property var hyprlandMonitor: null
     readonly property real monitorScale: root.useNiri
         ? ((NiriService.displayScales && NiriService.displayScales[screen.name] !== undefined)
             ? NiriService.displayScales[screen.name]
@@ -98,9 +100,12 @@ PanelWindow {
         : (hyprlandMonitor ? hyprlandMonitor.scale : 1)
     readonly property real monitorOffsetX: root.useNiri ? 0 : (hyprlandMonitor ? hyprlandMonitor.x : 0)
     readonly property real monitorOffsetY: root.useNiri ? 0 : (hyprlandMonitor ? hyprlandMonitor.y : 0)
-    property int activeWorkspaceId: root.useNiri 
+    property var activeWorkspaceId: root.useNiri
         ? (NiriService.focusedWorkspaceIndex ?? 0)
-        : (hyprlandMonitor && hyprlandMonitor.activeWorkspace ? hyprlandMonitor.activeWorkspace.id : 0)
+        : root.useUmbriel
+            ? ((CompositorService.workspaces ?? []).find(workspace =>
+                workspace.output === screen.name && (workspace.focused || workspace.active))?.id ?? "")
+            : (hyprlandMonitor && hyprlandMonitor.activeWorkspace ? hyprlandMonitor.activeWorkspace.id : 0)
     property string screenshotPath: `${root.screenshotDir}/image-${screen.name}`
     property bool screenshotReady: false
     property real dragStartX: 0
@@ -137,6 +142,12 @@ PanelWindow {
             return regions
         }
 
+        // Umbriel's windows IPC reports layout-slot coordinates before the
+        // scrolling viewport offset is applied. They are valid for ordering,
+        // but not for screen-space snapping in a region selector.
+        if (root.useUmbriel)
+            return []
+
         return RegionFunctions.filterWindowRegionsByLayers(
             root.windows.filter(w => w.workspace.id === root.activeWorkspaceId),
             root.layerRegions
@@ -150,8 +161,8 @@ PanelWindow {
         })
     }
     readonly property list<var> layerRegions: {
-        if (root.useNiri)
-            return [];
+        if (!root.useHyprland || !root.hyprlandMonitor)
+            return []
 
         const layersOfThisMonitor = root.layers[root.hyprlandMonitor.name]
         const topLayers = layersOfThisMonitor?.levels["2"]
