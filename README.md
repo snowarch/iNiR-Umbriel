@@ -5,7 +5,9 @@ iNiR compatibility work for the [Umbriel](https://github.com/noctalia-dev/umbrie
 > **Status:** experimental port, not a complete or stable compatibility target yet. This repository tracks only the Umbriel work. The established Niri edition remains in [snowarch/iNiR](https://github.com/snowarch/iNiR) and is maintained separately.
 
 **Last reviewed:** 2026-09-06
-**Current checkpoint:** `1a6bc5ab` (`feat(compositor): support Umbriel window previews`)
+**Published checkpoint:** `06b56c7e`
+
+**Verified locally after that checkpoint:** native Umbriel toplevel/output capture, shared screenshot CLI, Waffle Task View focus/close, Material ii Task View routing to Umbriel overview, and Umbriel portal dependency/doctor coverage. These remain development work until committed.
 
 ## What works today
 
@@ -13,7 +15,7 @@ iNiR compatibility work for the [Umbriel](https://github.com/noctalia-dev/umbrie
 - Umbriel IPC backend for windows, workspaces, overview, keyboard layouts and compositor actions
 - Ported keybinds with explicit handling for Umbriel-only differences
 - Native scratchpads and exact window restore by foreign-toplevel ID
-- Umbriel screenshots through `grim`
+- Native Umbriel output and foreign-toplevel capture through the compositor protocols exposed to `grim`
 - Settings integration for input, scrolling/dwindle/master layouts, appearance, animations and scratchpads
 - Safe display configuration previews with external systemd rollback
 - Output policies for VRR, tearing, direct scanout and HDR
@@ -21,8 +23,9 @@ iNiR compatibility work for the [Umbriel](https://github.com/noctalia-dev/umbrie
 - Fullscreen/GameMode state sourced from Umbriel rather than Niri geometry heuristics
 - Umbriel-aware autostart, setup, doctor, service wiring and Arch/CachyOS dependency handling
 - Umbriel-aware status/logs/update/repair diagnostics, migration scoping and update checks
-- Shared AltSwitcher, workspace navigation and Waffle window presence paths using the compositor-neutral model
+- Shared AltSwitcher, Waffle Task View and WorkspaceStrip using the compositor-neutral window/workspace model
 - Compositor-neutral cached window previews, using exact Umbriel foreign-toplevel captures without touching the clipboard
+- Semantic `inir` IPC and screenshot commands recover the active compositor session when invoked from a TTY/support shell
 
 This list describes implemented and tested paths only. Other iNiR surfaces may still contain Niri-specific assumptions or may not have been validated under Umbriel yet.
 
@@ -72,7 +75,7 @@ Near-term work is focused on correctness before claiming broad compatibility:
 - Audit every `inir` setup/install/update/status/logs/doctor/recovery path under Umbriel
 - Remove or capability-gate remaining Niri-only assumptions in shared shell surfaces
 - Expand native Umbriel workspace, window-rule, output and presentation-policy support
-- Port window switcher/overview consumers that still read Niri-specific models directly
+- Continue porting shared window/overview consumers while keeping Orbit and arbitrary move-by-ID Niri-only until Umbriel exposes equivalent semantics
 - Improve multi-output configuration and safe rollback UX
 - Validate fresh installs and updates from this repository rather than development worktrees
 - Extend distro installation support only where Umbriel packaging can be handled correctly
