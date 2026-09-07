@@ -1024,8 +1024,8 @@ Item {
 
                                 Connections {
                                     target: WindowPreviewService
-                                    function onPreviewUpdated(updatedId: int): void {
-                                        if (updatedId === windowItem.windowId)
+                                    function onPreviewUpdated(updatedId): void {
+                                        if (String(updatedId) === String(windowItem.windowId))
                                             windowItem.previewRevision++
                                     }
                                     function onCaptureComplete(): void {

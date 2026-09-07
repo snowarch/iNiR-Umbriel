@@ -42,21 +42,20 @@ PopupWindow {
 
     // Capture previews for windows in the current app entry
     function captureAppPreviews(): void {
-        if (!CompositorService.isNiri) return
+        if (!CompositorService.hasWorkspaceBackend) return
 
-        const windowIds = [];
-        for (const tl of root.appEntry?.toplevels ?? []) {
-            const id = tl?.niriWindowId
-                ?? NiriService.findNiriWindow(tl)?.niriWindow?.id
-                ?? -1
-            if (id > 0)
+        const windowIds = []
+        for (const toplevel of root.appEntry?.toplevels ?? []) {
+            let id = String(toplevel?.compositorWindowId ?? toplevel?.niriWindowId ?? "")
+            if (id.length === 0 && CompositorService.isNiri)
+                id = String(NiriService.findNiriWindow(toplevel)?.niriWindow?.id ?? "")
+            if (id.length > 0)
                 windowIds.push(id)
         }
-        
+
         if (windowIds.length > 0) {
-            WindowPreviewService.initialize();
-            // captureForTaskView will capture windows that need it
-            WindowPreviewService.captureForTaskView();
+            WindowPreviewService.initialize()
+            WindowPreviewService.captureForTaskView(windowIds)
         }
     }
 

@@ -67,8 +67,8 @@ PopupWindow {
         root.anchor.updateAnchor()
         const windows = button?.toplevels ?? appEntry?.toplevels ?? []
         root.pendingPreviewIds = windows
-            .map(toplevel => Number(toplevel?.niriWindowId ?? 0))
-            .filter(id => Number.isFinite(id) && id > 0)
+            .map(toplevel => String(toplevel?.compositorWindowId ?? toplevel?.niriWindowId ?? ""))
+            .filter(id => id.length > 0)
         root.open()
         if (root.pendingPreviewIds.length > 0)
             previewRefreshTimer.restart()

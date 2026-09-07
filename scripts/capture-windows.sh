@@ -17,25 +17,62 @@ resolve_bin() {
   printf '%s\n' "$path"
 }
 
-niri_bin="$(resolve_bin niri)" || exit $?
-jq_bin="$(resolve_bin jq)" || exit $?
-cliphist_bin="$(resolve_bin cliphist)" || exit $?
-head_bin="$(resolve_bin head)" || exit $?
-grep_bin="$(resolve_bin grep)" || exit $?
-wl_paste_bin="$(resolve_bin wl-paste)" || exit $?
-wl_copy_bin="$(resolve_bin wl-copy)" || exit $?
-sha256_bin="$(resolve_bin sha256sum)" || exit $?
-
 capture_all=false
 ids_to_capture=()
 
 for arg in "$@"; do
   if [[ "$arg" == "--all" ]]; then
     capture_all=true
-  elif [[ "$arg" =~ ^[0-9]+$ ]]; then
+  elif [[ -n "$arg" && "$arg" != -* ]]; then
     ids_to_capture+=("$arg")
   fi
 done
+
+jq_bin="$(resolve_bin jq)" || exit $?
+
+# Umbriel exposes exact foreign-toplevel IDs and grim can capture them directly.
+# This path does not touch the clipboard, unlike Niri's screenshot-window IPC.
+if [[ -n "${UMBRIEL_SOCKET:-}" ]]; then
+  umbriel_bin="$(resolve_bin umbriel)" || exit $?
+  grim_bin="$(resolve_bin grim)" || exit $?
+  mapfile -t all_windows < <("$umbriel_bin" windows --json 2>/dev/null | "$jq_bin" -r '.[].id')
+  windows_to_capture=()
+  if $capture_all || [[ ${#ids_to_capture[@]} -eq 0 ]]; then
+    windows_to_capture=("${all_windows[@]}")
+  else
+    for id in "${ids_to_capture[@]}"; do
+      for window_id in "${all_windows[@]}"; do
+        if [[ "$id" == "$window_id" ]]; then
+          windows_to_capture+=("$id")
+          break
+        fi
+      done
+    done
+  fi
+
+  rm -f "$preview_dir"/.window-*.part.png 2>/dev/null || true
+  missing=0
+  for id in "${windows_to_capture[@]}"; do
+    path="$preview_dir/window-$id.png"
+    tmp="$preview_dir/.window-$id.part.png"
+    if "$grim_bin" -T "$id" "$tmp" >/dev/null 2>&1 && [[ -s "$tmp" ]]; then
+      mv -f "$tmp" "$path"
+    else
+      rm -f "$tmp"
+      echo "[capture-windows] failed Umbriel capture: $id" >&2
+      missing=1
+    fi
+  done
+  exit "$missing"
+fi
+
+niri_bin="$(resolve_bin niri)" || exit $?
+cliphist_bin="$(resolve_bin cliphist)" || exit $?
+head_bin="$(resolve_bin head)" || exit $?
+grep_bin="$(resolve_bin grep)" || exit $?
+wl_paste_bin="$(resolve_bin wl-paste)" || exit $?
+wl_copy_bin="$(resolve_bin wl-copy)" || exit $?
+sha256_bin="$(resolve_bin sha256sum)" || exit $?
 
 state_dir="$(mktemp -d -t inir-window-previews.XXXXXX)"
 preview_marker="${XDG_RUNTIME_DIR:-/tmp}/inir-window-preview-capture-${UID:-$(id -u)}"

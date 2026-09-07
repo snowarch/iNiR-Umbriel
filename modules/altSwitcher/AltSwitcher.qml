@@ -804,8 +804,8 @@ Scope {
 
                     Connections {
                         target: WindowPreviewService
-                        function onPreviewUpdated(updatedId: int): void {
-                            if (updatedId === skewSlice.modelData?.id)
+                        function onPreviewUpdated(updatedId): void {
+                            if (String(updatedId) === String(skewSlice.modelData?.id))
                                 skewSlice.previewUrl = WindowPreviewService.getPreviewUrl(updatedId)
                         }
                         function onCaptureComplete(): void {
@@ -1779,7 +1779,7 @@ Scope {
         } else {
             rebuildSnapshot()
         }
-        if (CompositorService.isNiri && root.skewStyle)
+        if (CompositorService.hasWorkspaceBackend && root.skewStyle)
             Qt.callLater(() => WindowPreviewService.captureForTaskView())
         panelVisible = true
         if (animationsEnabled && !centerPanel && !compactStyle && !root.listStyle && !root.skewStyle) {

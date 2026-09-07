@@ -429,8 +429,8 @@ PanelSurface {
                                     Connections {
                                         target: WindowPreviewService
                                         enabled: detail._isNiri && row.winId > 0
-                                        function onPreviewUpdated(id: int): void {
-                                            if (id === row.winId) preview._apply()
+                                        function onPreviewUpdated(id): void {
+                                            if (String(id) === String(row.winId)) preview._apply()
                                         }
                                         function onCaptureComplete(): void {
                                             if (row.winId > 0) preview._apply()

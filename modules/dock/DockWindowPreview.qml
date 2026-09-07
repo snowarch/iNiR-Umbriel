@@ -154,9 +154,8 @@ Button {
             implicitHeight: 90
 
             // Prefer niriWindowId for Niri compositor
-            readonly property int windowId: CompositorService.isNiri
-                ? (root.toplevel?.niriWindowId ?? root.toplevel?.id ?? 0)
-                : 0
+            readonly property string windowId: String(root.toplevel?.compositorWindowId
+                ?? (CompositorService.isNiri ? (root.toplevel?.niriWindowId ?? root.toplevel?.id ?? "") : ""))
             property string previewUrl: ""
 
             // Loading shimmer effect
@@ -243,8 +242,8 @@ Button {
             // Listen for preview updates
             Connections {
                 target: WindowPreviewService
-                function onPreviewUpdated(updatedId: int): void {
-                    if (updatedId === previewArea.windowId) {
+                function onPreviewUpdated(updatedId): void {
+                    if (String(updatedId) === String(previewArea.windowId)) {
                         previewArea.previewUrl = WindowPreviewService.getPreviewUrl(updatedId)
                     }
                 }

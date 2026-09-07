@@ -256,8 +256,8 @@ PanelSurface {
 
                     Connections {
                         target: WindowPreviewService
-                        function onPreviewUpdated(windowId: int): void {
-                            if (windowId === pocketCard.modelData)
+                        function onPreviewUpdated(windowId): void {
+                            if (String(windowId) === String(pocketCard.modelData))
                                 pocketCard.previewUrl = WindowPreviewService.getPreviewUrl(windowId)
                         }
                         function onCaptureComplete(): void {

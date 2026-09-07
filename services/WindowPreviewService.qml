@@ -27,8 +27,10 @@ Singleton {
     }
 
     readonly property string previewDir: FileUtils.trimFileProtocol(Directories.genericCache) + "/inir/window-previews"
-    readonly property string sessionMarkerPath: previewDir + "/.niri-session"
-    readonly property string sessionKey: NiriService.socketPath ?? ""
+    readonly property string sessionMarkerPath: previewDir + "/.compositor-session"
+    readonly property string sessionKey: CompositorService.isUmbriel
+        ? (UmbrielService.socketPath ?? "")
+        : CompositorService.isNiri ? (NiriService.socketPath ?? "") : ""
     
     // Map of windowId -> { path, timestamp }
     property var previewCache: ({})
@@ -44,7 +46,7 @@ Singleton {
     property int captureAllMaxAgeMs: previewValidityMs
     property var requestedWindowIds: []
     property var requestedWindowMaxAgeMs: ({})
-    property int lastFocusedWindowId: -1
+    property string lastFocusedWindowId: ""
     
     // Preview validity duration (5 minutes)
     readonly property int previewValidityMs: 300000
@@ -61,7 +63,7 @@ Singleton {
     readonly property int _captureCooldownMs: 2000  // 2 seconds between capture cycles
     
     signal captureComplete()
-    signal previewUpdated(int windowId)
+    signal previewUpdated(string windowId)
 
     Component.onCompleted: {
         // Lazy init: only when TaskView actually requests previews.
@@ -70,13 +72,13 @@ Singleton {
     function initialize(): void {
         if (initialized) return
         initialized = true
-        lastFocusedWindowId = Number(NiriService.activeWindow?.id ?? -1)
+        lastFocusedWindowId = String(CompositorService.activeWindow?.id ?? "")
         ensureDirProcess.running = true
     }
 
     function markPreviewDirty(windowId): void {
-        const id = Number(windowId)
-        if (!Number.isFinite(id) || id <= 0 || dirtyWindowIds[id] === true)
+        const id = String(windowId ?? "")
+        if (id.length === 0 || dirtyWindowIds[id] === true)
             return
         const next = Object.assign({}, dirtyWindowIds)
         next[id] = true
@@ -120,8 +122,8 @@ Singleton {
         const merged = new Set(requestedWindowIds)
         const nextMaxAge = Object.assign({}, requestedWindowMaxAgeMs)
         for (const rawId of windowIds) {
-            const id = Number(rawId)
-            if (Number.isFinite(id) && id > 0) {
+            const id = String(rawId ?? "")
+            if (id.length > 0) {
                 merged.add(id)
                 const previous = nextMaxAge[id]
                 nextMaxAge[id] = previous === undefined
@@ -146,7 +148,7 @@ Singleton {
     function _pendingRequestNeedsCapture(): bool {
         const now = Date.now()
         const currentIds = captureAllRequested
-            ? (NiriService.windows ?? []).map(window => window.id)
+            ? (CompositorService.windows ?? []).map(window => String(window.id ?? ""))
             : requestedWindowIds
         for (const id of currentIds) {
             const cached = previewCache[id]
@@ -220,9 +222,9 @@ Singleton {
             onRead: data => {
                 const parts = data.trim().split("\t")
                 const filename = parts[0] ?? ""
-                const match = filename.match(/^window-(\d+)\.png$/)
+                const match = filename.match(/^window-([A-Za-z0-9_-]+)\.png$/)
                 if (match) {
-                    const id = parseInt(match[1])
+                    const id = match[1]
                     const mtimeSeconds = Number(parts[1])
                     root.previewCache[id] = {
                         path: root.previewDir + "/" + filename,
@@ -244,12 +246,12 @@ Singleton {
     
     // Remove previews for windows that no longer exist
     function cleanupOrphans(): void {
-        const windows = NiriService.windows ?? []
-        const windowIds = new Set(windows.map(w => w.id))
+        const windows = CompositorService.windows ?? []
+        const windowIds = new Set(windows.map(w => String(w.id ?? "")))
         
         const toDelete = []
         for (const id in previewCache) {
-            if (!windowIds.has(parseInt(id))) {
+            if (!windowIds.has(String(id))) {
                 toDelete.push(id)
             }
         }
@@ -303,7 +305,7 @@ Singleton {
     function _doCapture(): void {
         if (capturing) return
         
-        const allWindows = NiriService.windows ?? []
+        const allWindows = CompositorService.windows ?? []
         const requestedIds = new Set(root.requestedWindowIds)
         const requestedMaxAge = Object.assign({}, root.requestedWindowMaxAgeMs)
         const captureEverything = root.captureAllRequested
@@ -311,20 +313,21 @@ Singleton {
         root._clearCaptureRequest()
         const windows = captureEverything
             ? allWindows
-            : allWindows.filter(window => requestedIds.has(window.id))
+            : allWindows.filter(window => requestedIds.has(String(window.id ?? "")))
         if (windows.length === 0) return
         
         const now = Date.now()
         const idsToCapture = []
         
         for (const win of windows) {
-            const cached = previewCache[win.id]
+            const id = String(win.id ?? "")
+            const cached = previewCache[id]
             const maxAge = captureEverything ? captureEverythingMaxAge
-                : (requestedMaxAge[win.id] ?? previewValidityMs)
+                : (requestedMaxAge[id] ?? previewValidityMs)
             // Capture if: no preview or preview is stale
-            const needsCapture = root._needsCapture(win.id, cached, maxAge, now)
+            const needsCapture = root._needsCapture(id, cached, maxAge, now)
             if (needsCapture) {
-                idsToCapture.push(win.id)
+                idsToCapture.push(id)
             }
         }
         
@@ -337,8 +340,9 @@ Singleton {
         capturing = true
         GlobalStates.windowPreviewCaptureActive = true
         initialCapturesDone = true
-        Cliphist.suppressRefresh = true
-        
+        if (CompositorService.isNiri)
+            Cliphist.suppressRefresh = true
+
         // Build command with IDs
         const cmd = ShellExec.supportsFish()
             ? ["/usr/bin/fish", Quickshell.shellPath("scripts/capture-windows.fish")]
@@ -358,15 +362,16 @@ Singleton {
 
         if (!initialized) initialize()
         
-        const windows = NiriService.windows ?? []
+        const windows = CompositorService.windows ?? []
         if (windows.length === 0) return
         
         _log("[WindowPreviewService] Force capturing all", windows.length, "windows")
         capturing = true
         GlobalStates.windowPreviewCaptureActive = true
-        Cliphist.suppressRefresh = true
-        
-        const ids = windows.map(w => w.id)
+        if (CompositorService.isNiri)
+            Cliphist.suppressRefresh = true
+
+        const ids = windows.map(w => String(w.id ?? ""))
         captureProcess.idsToCapture = ids
         captureProcess.command = ShellExec.supportsFish()
             ? ["/usr/bin/fish", Quickshell.shellPath("scripts/capture-windows.fish"), "--all"]
@@ -410,8 +415,10 @@ Singleton {
             idsToCapture = []
             // The capture script has already removed only its own entries and
             // conditionally restored the clipboard before returning.
-            Cliphist.suppressRefresh = false
-            Cliphist.refresh()
+            if (CompositorService.isNiri) {
+                Cliphist.suppressRefresh = false
+                Cliphist.refresh()
+            }
             root.captureComplete()
             if (root._hasPendingCaptureRequest())
                 captureDebounceTimer.restart()
@@ -420,17 +427,16 @@ Singleton {
     
     // Clean up when window closes
     Connections {
-        target: NiriService
-        enabled: root.initialized  // Skip event processing until initialized
-        
+        target: CompositorService
+        enabled: root.initialized
+
         function onWindowsChanged(): void {
             cleanupTimer.restart()
         }
 
-
         function onActiveWindowChanged(): void {
-            const nextId = Number(NiriService.activeWindow?.id ?? -1)
-            if (root.lastFocusedWindowId > 0 && root.lastFocusedWindowId !== nextId)
+            const nextId = String(CompositorService.activeWindow?.id ?? "")
+            if (root.lastFocusedWindowId.length > 0 && root.lastFocusedWindowId !== nextId)
                 root.markPreviewDirty(root.lastFocusedWindowId)
             root.lastFocusedWindowId = nextId
         }
@@ -443,19 +449,21 @@ Singleton {
     }
     
     // Public API
-    function getPreviewUrl(windowId: int): string {
-        const cached = previewCache[windowId]
+    function getPreviewUrl(windowId): string {
+        const id = String(windowId ?? "")
+        const cached = previewCache[id]
         if (!cached) return ""
         return "file://" + cached.path + "?" + cached.timestamp
     }
     
-    function hasPreview(windowId: int): bool {
-        return previewCache[windowId] !== undefined
+    function hasPreview(windowId): bool {
+        return previewCache[String(windowId ?? "")] !== undefined
     }
 
-    function previewAgeMs(windowId: int): double {
-        const cached = previewCache[windowId]
-        if (dirtyWindowIds[windowId] === true
+    function previewAgeMs(windowId): double {
+        const id = String(windowId ?? "")
+        const cached = previewCache[id]
+        if (dirtyWindowIds[id] === true
                 || !cached || !Number.isFinite(cached.timestamp))
             return Number.POSITIVE_INFINITY
         return Math.max(0, Date.now() - cached.timestamp)

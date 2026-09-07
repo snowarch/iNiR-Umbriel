@@ -207,8 +207,8 @@ Item {
             }
             Connections {
                 target: WindowPreviewService
-                function onPreviewUpdated(id: int): void {
-                    if (id === card.focusedWindowId) preview.refresh()
+                function onPreviewUpdated(id): void {
+                    if (String(id) === String(card.focusedWindowId)) preview.refresh()
                 }
                 function onCaptureComplete(): void { preview.refresh() }
             }

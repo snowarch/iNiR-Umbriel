@@ -18,21 +18,24 @@ Button {
     padding: Looks.dp(5)
     Layout.fillHeight: true
 
-    // Get Niri window ID from toplevel for WindowPreviewService
-    readonly property int niriWindowId: {
-        if (!root.toplevel) return -1
-        if (root.toplevel.niriWindowId)
-            return root.toplevel.niriWindowId
-        const match = NiriService.findNiriWindow(root.toplevel)
-        return match?.niriWindow?.id ?? -1
+    readonly property string windowId: {
+        if (!root.toplevel) return ""
+        const canonical = String(root.toplevel.compositorWindowId ?? "")
+        if (canonical.length > 0) return canonical
+        if (CompositorService.isNiri) {
+            const legacy = root.toplevel.niriWindowId
+                ?? NiriService.findNiriWindow(root.toplevel)?.niriWindow?.id
+                ?? ""
+            return String(legacy)
+        }
+        return ""
     }
 
     onClicked: {
-        if (CompositorService.isNiri && root.niriWindowId > 0) {
-            NiriService.focusWindow(root.niriWindowId)
-        } else {
+        if (root.windowId.length > 0)
+            CompositorService.focusWindow(root.windowId)
+        else
             root.toplevel?.activate()
-        }
     }
 
     background: Rectangle {
@@ -132,14 +135,14 @@ Button {
                     // Listen for preview updates from WindowPreviewService
                     Connections {
                         target: WindowPreviewService
-                        function onPreviewUpdated(updatedId: int): void {
-                            if (updatedId === root.niriWindowId) {
+                        function onPreviewUpdated(updatedId): void {
+                            if (String(updatedId) === String(root.windowId)) {
                                 previewImage.previewUrl = WindowPreviewService.getPreviewUrl(updatedId)
                             }
                         }
                         function onCaptureComplete(): void {
-                            if (root.niriWindowId > 0) {
-                                const url = WindowPreviewService.getPreviewUrl(root.niriWindowId)
+                            if (root.windowId.length > 0) {
+                                const url = WindowPreviewService.getPreviewUrl(root.windowId)
                                 if (url) previewImage.previewUrl = url
                             }
                         }
@@ -147,9 +150,9 @@ Button {
 
                     Component.onCompleted: {
                         WindowPreviewService.initialize()
-                        if (root.niriWindowId > 0) {
+                        if (root.windowId.length > 0) {
                             Qt.callLater(() => {
-                                const url = WindowPreviewService.getPreviewUrl(root.niriWindowId)
+                                const url = WindowPreviewService.getPreviewUrl(root.windowId)
                                 if (url) previewImage.previewUrl = url
                             })
                         }
@@ -174,11 +177,10 @@ Button {
         Layout.leftMargin: Looks.dp(4)
         radius: Looks.radius.large - root.padding
         onClicked: {
-            if (CompositorService.isNiri && root.niriWindowId > 0) {
-                NiriService.closeWindow(root.niriWindowId)
-            } else {
+            if (root.windowId.length > 0)
+                CompositorService.closeWindow(root.windowId)
+            else
                 root.toplevel?.close()
-            }
         }
     }
 }

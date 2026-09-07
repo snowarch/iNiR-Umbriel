@@ -126,9 +126,8 @@ Button {
             implicitWidth: 140
             implicitHeight: 90
 
-            readonly property int windowId: CompositorService.isNiri
-                ? (root.toplevel?.niriWindowId ?? root.toplevel?.id ?? 0)
-                : 0
+            readonly property string windowId: String(root.toplevel?.compositorWindowId
+                ?? (CompositorService.isNiri ? (root.toplevel?.niriWindowId ?? root.toplevel?.id ?? "") : ""))
             property string previewUrl: ""
 
             Rectangle {
@@ -213,8 +212,8 @@ Button {
 
             Connections {
                 target: WindowPreviewService
-                function onPreviewUpdated(updatedId: int): void {
-                    if (updatedId === previewArea.windowId) {
+                function onPreviewUpdated(updatedId): void {
+                    if (String(updatedId) === String(previewArea.windowId)) {
                         previewArea.previewUrl = WindowPreviewService.getPreviewUrl(updatedId)
                     }
                 }

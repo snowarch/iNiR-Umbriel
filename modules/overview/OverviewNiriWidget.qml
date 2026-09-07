@@ -1187,8 +1187,8 @@ Item {
                             // Listen for preview updates
                             Connections {
                                 target: WindowPreviewService
-                                function onPreviewUpdated(updatedId: int): void {
-                                    if (updatedId === windowItem.windowId)
+                                function onPreviewUpdated(updatedId): void {
+                                    if (String(updatedId) === String(windowItem.windowId))
                                         windowPreview.revision++
                                 }
                                 function onCaptureComplete(): void {
