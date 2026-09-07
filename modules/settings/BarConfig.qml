@@ -2814,6 +2814,7 @@ ContentPage {
             ConfigRow {
                 uniform: true
                 SettingsSwitch {
+                    visible: CompositorService.isNiri
                     buttonIcon: "visibility"
                     text: Translation.tr("Screen cast")
                     checked: Config.options?.bar?.utilButtons?.showScreenCast ?? false
@@ -2843,7 +2844,7 @@ ContentPage {
             }
 
             StyledText {
-                visible: Config.options?.bar?.utilButtons?.showScreenCast ?? false
+                visible: CompositorService.isNiri && (Config.options?.bar?.utilButtons?.showScreenCast ?? false)
                 Layout.fillWidth: true
                 text: Translation.tr("Toggle button to start/stop Niri dynamic casting (screen mirroring) to a target output.")
                 color: Appearance.colors.colSubtext
@@ -2852,7 +2853,7 @@ ContentPage {
             }
 
             MaterialTextArea {
-                visible: Config.options?.bar?.utilButtons?.showScreenCast ?? false
+                visible: CompositorService.isNiri && (Config.options?.bar?.utilButtons?.showScreenCast ?? false)
                 Layout.fillWidth: true
                 placeholderText: "HDMI-A-1"
                 text: Config.options?.bar?.utilButtons?.screenCastOutput ?? "HDMI-A-1"
@@ -2863,7 +2864,7 @@ ContentPage {
             }
 
             StyledText {
-                visible: Config.options?.bar?.utilButtons?.showScreenCast ?? false
+                visible: CompositorService.isNiri && (Config.options?.bar?.utilButtons?.showScreenCast ?? false)
                 Layout.fillWidth: true
                 text: Translation.tr("Run 'niri msg outputs' to find your output name")
                 color: Appearance.colors.colSubtext

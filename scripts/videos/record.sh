@@ -439,7 +439,11 @@ prepare_audio_capture() {
 }
 
 getactivemonitor() {
-    if command -v niri >/dev/null 2>&1 && niri msg focused-output >/dev/null 2>&1; then
+    if [[ -n "${UMBRIEL_SOCKET:-}" ]] && command -v umbriel >/dev/null 2>&1; then
+        umbriel workspaces --json 2>/dev/null \
+            | jq -r 'first(.[] | select(.focused == true)) | .output // empty' || true
+    elif [[ -n "${NIRI_SOCKET:-}" ]] && command -v niri >/dev/null 2>&1 \
+            && niri msg focused-output >/dev/null 2>&1; then
         niri msg focused-output 2>/dev/null | head -n 1 | sed -n 's/.*(\(.*\))/\1/p' || true
     elif command -v hyprctl >/dev/null 2>&1; then
         hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused) | .name' || true
